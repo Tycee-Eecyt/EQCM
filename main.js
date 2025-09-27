@@ -403,7 +403,6 @@ function postJson(url, data, maxRedirects = 3) {
                 redirectsLeft > 0
               ) {
                 const next = new URL(res.headers.location, u).toString();
-                log('Webhook redirect', res.statusCode, '→', next);
                 return doRequest(next, redirectsLeft - 1);
               }
               resolve({ status: res.statusCode, body: out });
@@ -487,7 +486,16 @@ async function maybePostWebhook(){
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   const payload = { secret, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
-  try { const res = await postJson(url, payload); log('Webhook response', res.status, (res.body||'').slice(0,180)); }
+  try {
+    const res = await postJson(url, payload);
+    const debugWebhook = String(process.env.DEBUG_WEBHOOK || '').toLowerCase();
+    const debugOn = debugWebhook === '1' || debugWebhook === 'true' || debugWebhook === 'yes';
+    const is2xx = (res.status >= 200 && res.status < 300);
+    if (!is2xx || debugOn) {
+      const bodyPreview = (res.body || '').slice(0, 180);
+      log('Webhook response', res.status, bodyPreview);
+    }
+  }
   catch(e){ log('Webhook error', e.message); }
 }
 
