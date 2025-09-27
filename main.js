@@ -378,19 +378,18 @@ function writeCsv(filePath, header, rows){
 
 function postJson(url, data, maxRedirects = 3) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify(data);
-    const doRequest = (u, redirectsLeft) => {
+    const initialBody = JSON.stringify(data);
+    const doRequest = (u, redirectsLeft, method = 'POST', body = initialBody) => {
       try {
         const h = u.startsWith('https') ? https : http;
+        const headers = {};
+        if (method !== 'GET') {
+          headers['Content-Type'] = 'application/json';
+          headers['Content-Length'] = Buffer.byteLength(body);
+        }
         const req = h.request(
           u,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(body),
-            },
-          },
+          { method, headers },
           (res) => {
             let out = '';
             res.on('data', (d) => (out += d.toString()));
@@ -403,14 +402,19 @@ function postJson(url, data, maxRedirects = 3) {
                 redirectsLeft > 0
               ) {
                 const next = new URL(res.headers.location, u).toString();
-                return doRequest(next, redirectsLeft - 1);
+                // For 301/302/303, switch to GET without body; for 307/308, keep method and body
+                if (res.statusCode === 307 || res.statusCode === 308) {
+                  return doRequest(next, redirectsLeft - 1, method, body);
+                } else {
+                  return doRequest(next, redirectsLeft - 1, 'GET', null);
+                }
               }
               resolve({ status: res.statusCode, body: out });
             });
           }
         );
         req.on('error', reject);
-        req.write(body);
+        if (method !== 'GET' && body) req.write(body);
         req.end();
       } catch (e) {
         reject(e);

@@ -1,41 +1,4 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>Deploy Google Sheets backend</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 18px; line-height: 1.45; max-width: 900px; }
-    code, pre { background: #f5f5f5; padding: 2px 4px; border-radius: 4px; }
-    pre { padding: 12px; overflow: auto; }
-    h2 { margin-top: 24px; }
-    ol li { margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <h1>Google Sheets Backend — Setup</h1>
-  <p>This page helps you deploy the Apps Script that the tray app calls. It also supports per-character <b>Push inventory to sheet</b> tabs like your screenshot layout.</p>
-
-  <h2>1) Create a Spreadsheet</h2>
-  <ol>
-    <li>Create a new Google Sheet (or reuse an existing one).</li>
-    <li>Copy its URL and paste it into the app <b>Settings → Spreadsheet URL</b>.</li>
-  </ol>
-
-  <h2>2) Create an Apps Script Project</h2>
-  <ol>
-    <li>Open <b>Extensions → Apps Script</b> in the Sheet.</li>
-    <li>Replace <b>Code.gs</b> with the contents below.</li>
-    <li>Set <b>CONFIG.SECRET</b> to your shared secret (optional) — match it in the app settings.</li>
-    <li>Deploy: <b>Deploy → New deployment → Web app</b> → Execute as <i>Me</i> → Who has access <i>Anyone with link</i>.</li>
-    <li>Copy the <b>/exec</b> URL into the app <b>Settings → Apps Script /exec URL</b>.</li>
-  </ol>
-
-  <h2>3) Code.gs</h2>
-  <p>You can copy the file at <code>docs/Code.gs</code> from this repo, or paste the snippet below into your Apps Script project.</p>
-  <pre id="code"></pre>
-
-  <script>
-  const code = `// Code.gs — Google Apps Script backend for EQ Character Manager
+// Code.gs — Google Apps Script backend for EQ Character Manager
 const CONFIG = {
   SECRET: '',              // Optional: set a shared secret string; leave blank to disable check
   ZONES_SHEET: 'Zone Tracker',
@@ -82,7 +45,7 @@ function getOrMakeSheet_(ss, name){
 
 function ensureHeader_(sh, header){
   const existing = sh.getRange(1,1,1,sh.getMaxColumns()).getValues()[0].filter(String);
-  if (existing.join('\\t') !== header.join('\\t')){
+  if (existing.join('\t') !== header.join('\t')){
     sh.clearContents();
     sh.getRange(1,1,1,header.length).setValues([header]);
   }
@@ -128,7 +91,7 @@ function upsertInventorySummary_(ss, rows){
   const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
                   'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
                   'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
-                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\\'s Mask'];
+                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
   const data = rows.map(o => [o.character,o.file,o.logFile,o.created,o.modified,
                               o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
@@ -165,7 +128,7 @@ function pushInventorySheet_(ss, body){
   while (ss.getSheetByName(name)) { name = baseName + ' (' + (++n) + ')'; }
   const sh = ss.insertSheet(name);
 
-  // Header rows (A1:D1, A2:D2) to match screenshot layout
+  // Header rows (A1:D1, A2:D2)
   sh.getRange(1,1,1,4).setValues([['Inventory for','File','Created On','Modified On']]);
   sh.getRange(2,1,1,4).setValues([[character, info.file || '', info.created || '', info.modified || '']]);
 
@@ -183,8 +146,5 @@ function pushInventorySheet_(ss, body){
   sh.autoResizeColumns(1, header.length);
 
   return { ok:true, sheet: name };
-}`;
-  document.getElementById('code').textContent = code;
-  </script>
-</body>
-</html>
+}
+
