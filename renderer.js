@@ -5,7 +5,6 @@ contextBridge.exposeInMainWorld('EQCM', {
   setSettings: (payload) => ipcRenderer.invoke('settings:set', payload),
   browseFolder: (which) => ipcRenderer.invoke('settings:browseFolder', which),
   deriveSheetId: (url) => ipcRenderer.invoke('settings:deriveSheetId', url),
-  testWebhook: () => ipcRenderer.invoke('webhook:test'),
   openExternal: (url) => shell.openExternal(url)
 });
 

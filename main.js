@@ -825,14 +825,6 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
   saveSettings(); rebuildTray();
   return { path: p };
 });
-ipcMain.handle('webhook:test', async () => {
-  ensureSettings();
-  const url = (state.settings.appsScriptUrl||'').trim();
-  if (!isLikelyAppsScriptExec(url)) return { ok:false, status:0, body:'URL is not an Apps Script /exec endpoint.' };
-  try { const payload = { secret: (state.settings.appsScriptSecret||'').trim(), upserts: { zones: [], factions: [], inventory: [], inventoryDetails: [] } }; const res = await postJson(url, payload); return { ok: res.status>=200 && res.status<300, status: res.status, body: String(res.body||'') }; }
-  catch(e){ return { ok:false, status:0, body: String(e && e.message || e) }; }
-});
-
 app.whenReady().then(() => {
   const iconPath = path.join(__dirname, 'assets', 'tray.png');
   let img = nativeImage.createFromPath(iconPath);
