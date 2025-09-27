@@ -1,0 +1,17 @@
+{
+  "name": "eq-character-manager",
+  "version": "1.7.7",
+  "description": "EQ Character Manager \u2014 system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
+  "main": "main.js",
+  "author": "Tyler A",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  },
+  "build": {
+    "icon": "assets/tray-256.png"
+  }
+}

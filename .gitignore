@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# EQ Character Manager — .gitignore
+# Node/Electron app with local CSV outputs and builder artifacts
+# ------------------------------------------------------------
+
+### OS cruft
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+*.swp
+*.swo
+
+### Node / package managers
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+### Tool caches
+.eslintcache
+.stylelintcache
+.turbo/
+turbo/
+.cache/
+.parcel-cache/
+.vite/
+.nyc_output/
+coverage/
+*.tsbuildinfo
+
+### Env files
+.env
+.env.local
+.env.*.local
+
+### Editors / IDEs
+.vscode/
+.idea/
+*.iml
+
+### Build / dist (Electron)
+dist/
+dist_electron/
+out/
+release/
+releases/
+build/
+win-unpacked/
+linux-unpacked/
+mac/
+*.asar
+
+# Electron Builder / Forge artifacts & auto-update
+*.blockmap
+latest*.yml
+*.dmg
+*.exe
+*.msi
+*.zip
+*.tar.gz
+*.AppImage
+*.snap
+*.deb
+*.rpm
+*.nupkg
+RELEASES
+
+### App-specific outputs (local CSV exports)
+# If you keep CSV exports inside the repo folder, ignore them.
+csv/
+**/inventory/*.csv
+**/zones.csv
+**/faction_cov.csv
+**/inventory_summary.csv
+
+### Example: ignore local user settings/cache if ever checked in
+# (App writes to Electron userData directory, but in case of local runs in repo)
+data/
+*.sqlite
+
+# End of file

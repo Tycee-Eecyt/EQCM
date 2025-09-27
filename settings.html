@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>EQ Character Manager — Settings</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    label { display:block; margin-top:10px; font-weight:600; }
+    input[type="text"], input[type="password"], select { width: 100%; padding: 8px; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .row > * { flex: 1; }
+    button { padding:8px 12px; }
+    .small { font-size: 12px; color:#555; }
+    .grid { display:grid; grid-template-columns: 200px 1fr auto; gap: 8px 12px; align-items:center; }
+    .grid label { margin:0; }
+  </style>
+<style>.listbox{border:1px solid #ddd;padding:8px;max-height:140px;overflow:auto}</style></head>
+<body>
+  <h2>EQ Character Manager — Settings</h2>
+  <div class="grid">
+    <label>Logs folder</label>
+    <input id="logsDir" type="text" placeholder="Pick EverQuest/logs folder"/>
+    <button onclick="pick('logsDir')">Browse…</button>
+
+    <label>Base folder</label>
+    <input id="baseDir" type="text" placeholder="Pick EverQuest base folder"/>
+    <button onclick="pick('baseDir')">Browse…</button>
+
+    <label>Local CSV output</label>
+    <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
+    <button onclick="pick('localSheetsDir')">Browse…</button>
+
+    <label>Scan interval</label>
+    <select id="scanIntervalSec">
+      <option>30</option><option>60</option><option>120</option><option>300</option>
+    </select>
+    <div></div>
+
+    <label>Enable local CSVs</label>
+    <input id="localSheetsEnabled" type="checkbox"/>
+    <div></div>
+
+    <label>Enable Google Sheets (webhook)</label>
+    <input id="remoteSheetsEnabled" type="checkbox"/>
+    <div></div>
+
+    <label>Apps Script /exec URL</label>
+    <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec"/>
+    <div class="small">Deploy your Google Apps Script as Web App and paste the /exec URL here.</div>
+
+    <label>Webhook secret (optional)</label>
+    <input id="appsScriptSecret" type="password" placeholder="Shared secret to validate webhook"/>
+    <div></div>
+
+    <label>Spreadsheet URL</label>
+    <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/<ID>/edit"/>
+    <button onclick="openSheet()">Open</button>
+  </div>
+
+  <div style="margin-top:16px">
+    <button onclick="save()">Save</button>
+    <button onclick="testWebhook()">Test webhook</button>
+  </div>
+
+  <p class="small" style="margin-top:12px">
+    Use the tray menu → <b>Push inventory to sheet</b> to create a new tab like the screenshot, one per character.
+  </p>
+
+  <script>
+    const els = {};
+    function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
+    async function load(){
+      const { settings } = await window.EQCM.getSettings();
+      ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
+      ['localSheetsEnabled','remoteSheetsEnabled'].forEach(k => byId(k).checked = !!settings[k]);
+      byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
+    }
+    async function save(){
+      const payload = {
+        logsDir: byId('logsDir').value.trim(),
+        baseDir: byId('baseDir').value.trim(),
+        localSheetsDir: byId('localSheetsDir').value.trim(),
+        appsScriptUrl: byId('appsScriptUrl').value.trim(),
+        appsScriptSecret: byId('appsScriptSecret').value,
+        sheetUrl: byId('sheetUrl').value.trim(),
+        scanIntervalSec: Number(byId('scanIntervalSec').value),
+        localSheetsEnabled: byId('localSheetsEnabled').checked,
+        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked
+      };
+      await window.EQCM.setSettings(payload);
+      alert('Saved.');
+    }
+    async function pick(which){
+      const res = await window.EQCM.browseFolder(which);
+      if (res && res.path) byId(which).value = res.path;
+    }
+    function openSheet(){
+      const url = byId('sheetUrl').value.trim();
+      if (url) window.EQCM.openExternal(url);
+    }
+    async function testWebhook(){
+      const res = await window.EQCM.testWebhook();
+      alert('Webhook test: ' + (res.ok ? 'OK ' : 'FAIL ') + res.status + '\\n' + (res.body||''));
+    }
+    load();
+  </script>
+</body>
+</html>
