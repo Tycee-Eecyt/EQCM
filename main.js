@@ -1463,3 +1463,17 @@ app.whenReady().then(() => {
 
 process.on('unhandledRejection', (err) => { log('Unhandled rejection', err && err.stack ? err.stack : String(err)); });
 process.on('uncaughtException', (err) => { log('Uncaught exception', err && err.stack ? err.stack : String(err)); });
+// Compute discovered character names from current state
+function getDiscoveredCharacters(){
+  try{
+    const names = new Set();
+    Object.keys(state.inventory||{}).forEach(n => names.add(String(n)));
+    Object.values(state.latestZonesByFile||{}).forEach(v => { if (v && v.character) names.add(String(v.character)); });
+    Object.keys(state.latestZones||{}).forEach(n => names.add(String(n)));
+    return Array.from(names).sort();
+  }catch{ return []; }
+}
+ipcMain.handle('settings:get', async () => {
+  ensureSettings();
+  return { settings: state.settings, characters: getDiscoveredCharacters(), env: {} };
+});
