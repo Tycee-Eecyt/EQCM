@@ -32,3 +32,4 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Track self invisibility start/stop times and treat invis as active up to 20 minutes (configurable). If a /con returns Indifferent while invis is active, prefer previous stable standing instead of locking in Indifferent.
 - Track recent attacks per mob (by name). If a /con occurs soon after attacking that mob (default 5 minutes), treat hostile results as combat-biased and prefer the previous stable standing.
 - Keeps short look-behind line heuristics but prioritizes time-window rules for reliability.
+- Notes now include previous standing context: when fallback is applied due to invis or combat, the note includes e.g. “(invis; prev=Kindly)” or “(combat; prev=Warmly)”.

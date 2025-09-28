@@ -732,7 +732,7 @@ async function scanLogs(){
       const lines = text.replace(/\r\n/g,'\n').split('\n').filter(Boolean);
       const covLast = state._covLastStable || (state._covLastStable = {});
       const status = state._status || (state._status = {});
-      const nowState = status[char] || (status[char] = { invisOn: 0, invisOff: 0, lastCombat: 0, attacks: {} });
+      const nowState = status[char] || (status[char] = { invisOn: 0, invisOff: 0, lastCombat: 0, attacks: {}, prevBeforeInvis: null, prevBeforeCombat: null });
       if (!covLast[char]) covLast[char] = {};
 
       let sawZone = false;
@@ -756,6 +756,8 @@ async function scanLogs(){
         if (RE_SELF_INVIS_ON.test(line)){
           const tsStr = (line.match(/^\[([^\]]+)\]/)||[])[1] || '';
           const t = parseEqTimestamp(tsStr);
+          // snapshot last known faction before invis begins
+          if (state.covFaction[char]) nowState.prevBeforeInvis = Object.assign({}, state.covFaction[char]);
           nowState.invisOn = t.when.getTime();
           continue;
         }
@@ -763,6 +765,9 @@ async function scanLogs(){
           const tsStr = (line.match(/^\[([^\]]+)\]/)||[])[1] || '';
           const t = parseEqTimestamp(tsStr);
           nowState.invisOff = t.when.getTime();
+          // clear snapshot after invis ends
+          // (keep last snapshot until next invis if you prefer historical context)
+          // nowState.prevBeforeInvis = null;
           continue;
         }
 
@@ -773,6 +778,8 @@ async function scanLogs(){
           const ts = (mAH||mAM).groups.ts;
           const mob = (mAH||mAM).groups.mob;
           const t = parseEqTimestamp(ts);
+          // snapshot last known faction before combat engagement
+          if (state.covFaction[char]) nowState.prevBeforeCombat = Object.assign({}, state.covFaction[char]);
           nowState.lastCombat = t.when.getTime();
           const key = normalizeMobName(mob);
           if (!nowState.attacks) nowState.attacks = {};
@@ -827,25 +834,37 @@ async function scanLogs(){
 
             if (preferFallbackForCombat || unstableCombat){
               if (lastMob){
-                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + ' (combat)', score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                const prev = nowState.prevBeforeCombat;
+                const note = prev && prev.standing ? ` (combat; prev=${prev.standing})` : ' (combat)';
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 log('Combat-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
-                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + ' (combat)', mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                const prev = nowState.prevBeforeCombat;
+                const note = prev && prev.standing ? ' (combat; prev=' + prev.standing + ')' : ' (combat)';
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
                 log('Combat-biased /con, applied char fallback', char, mob);
               } else {
-                state.covFaction[char] = { standing, standingDisplay: standing + ' (combat?)', score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                const prev = nowState.prevBeforeCombat;
+                const note = prev && prev.standing ? ' (combat?; prev=' + prev.standing + ')' : ' (combat?)';
+                state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 log('Combat-biased /con, accepted as baseline', char, mob);
               }
             }
             else if (preferFallbackForInvis || unstableInvis){
               if (lastMob){
-                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + ' (invis)', score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                const prev = nowState.prevBeforeInvis;
+                const note = prev && prev.standing ? ` (invis; prev=${prev.standing})` : ' (invis)';
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 log('Invis-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
-                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + ' (invis)', mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                const prev = nowState.prevBeforeInvis;
+                const note = prev && prev.standing ? ' (invis; prev=' + prev.standing + ')' : ' (invis)';
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
                 log('Invis-biased /con, applied char fallback', char, mob);
               } else {
-                state.covFaction[char] = { standing, standingDisplay: standing + ' (invis?)', score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                const prev = nowState.prevBeforeInvis;
+                const note = prev && prev.standing ? ' (invis?; prev=' + prev.standing + ')' : ' (invis?)';
+                state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 log('Invis-biased /con, accepted as baseline', char, mob);
               }
             }
