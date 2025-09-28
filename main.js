@@ -1034,7 +1034,7 @@ const fRowsOut = filterRowsByFavorites(fRows);
 
   const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
                  'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                 'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak','Larrikan\'s Mask',
+                 'Reaper of the Dead','Pearl Count','Peridot Count','Larrikan\'s Mask',
                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One',
                  'Spreadsheet URL','Suggested Sheet Name'];
   // Determine dynamic extra headers from merged raid kit (excluding fixed)
@@ -1050,7 +1050,7 @@ const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const suggested = `Inventory - ${char}`;
   const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
           kit.vialVeliumVapors, kit.leatherfootSkullcap, kit.shinyBrassIdol, kit.ringOfShadowsCount,
-          kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.tenDosePotionOfStingingWortCount, kit.pegasusFeatherCloak, kit.larrikansMask,
+          kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.larrikansMask,
           kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
           (state.settings.sheetUrl||''), suggested];
   const exList = buildRaidKitExtrasForCharacter(char);

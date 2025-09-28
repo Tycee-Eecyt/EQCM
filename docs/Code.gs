@@ -118,7 +118,7 @@ function replaceFactions_(ss, rows){
 function upsertInventorySummary_(ss, rows){
   const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
                 'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+                'Reaper of the Dead','Pearl Count','Peridot Count',
                 'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
   // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
   const extrasSet = new Set();
@@ -129,7 +129,7 @@ function upsertInventorySummary_(ss, rows){
   const data = (rows||[]).map(o => {
     const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
                       o.raidKit?.vialVeliumVapors||'', o.raidKit?.leatherfootSkullcap||'', o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0,
-                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0, o.raidKit?.tenDosePotionOfStingingWortCount||0, o.raidKit?.pegasusFeatherCloak||'',
+                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
                       o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
                       o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
     const ex = o.kitExtras||{};
@@ -142,7 +142,7 @@ function upsertInventorySummary_(ss, rows){
 function replaceInventorySummary_(ss, rows){
   const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
                 'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+                'Reaper of the Dead','Pearl Count','Peridot Count',
                 'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
   const extrasSet = new Set();
   (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
@@ -152,7 +152,7 @@ function replaceInventorySummary_(ss, rows){
   const data = (rows||[]).map(o => {
     const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
                       o.raidKit?.vialVeliumVapors||'', o.raidKit?.leatherfootSkullcap||'', o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0,
-                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0, o.raidKit?.tenDosePotionOfStingingWortCount||0, o.raidKit?.pegasusFeatherCloak||'',
+                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
                       o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
                       o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
     const ex = o.kitExtras||{};

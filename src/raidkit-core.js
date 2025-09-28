@@ -24,7 +24,6 @@ const FIXED_RK_NAMES = new Set([
   'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol',
   'Ring of Shadows','Reaper of the Dead','Pearl','Peridot',
   'Mana Battery - Class Five','Mana Battery - Class Four','Mana Battery - Class Three','Mana Battery - Class Two','Mana Battery - Class One',
-  '10 Dose Potion of Stinging Wort','Pegasus Feather Cloak',
   "Larrikan's Mask"
 ]);
 
@@ -100,4 +99,3 @@ module.exports = {
   countRaidKitForInventory,
   normalizeUserItems
 };
-
