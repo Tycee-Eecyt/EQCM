@@ -17,9 +17,18 @@
     let kit = { defaults: [], custom: [], hidden: [], merged: [] };
     function setStatus(msg){ const el = document.getElementById('status'); if (el){ el.textContent = msg||''; if (msg){ setTimeout(()=>{ el.textContent=''; }, 1200); } } }
     async function load(){ const res = await window.EQCM.getRaidKit(); kit = res || { defaults: [], custom: [], hidden: [], merged: [] }; render(); }
+    function normalizeCustom(list){
+      const arr = Array.isArray(list)? list : [];
+      return arr.map(o => ({ name: String(o.name||''), mode: (o.mode==='count'?'count':'present'), pattern: o.pattern||('^'+escapeRe(String(o.name||''))+'$') }))
+               .filter(o => !!o.name);
+    }
     function render(){
       const box = document.getElementById('kitList'); box.innerHTML = '';
-      const merged = (kit.merged||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+      const mergedBase = Array.isArray(kit.merged) ? kit.merged.slice() : [];
+      const customNorm = normalizeCustom(kit.custom);
+      const byName = new Set(mergedBase.map(it => String(it.name)));
+      const merged = mergedBase.concat(customNorm.filter(it => !byName.has(String(it.name))));
+      merged.sort((a,b)=>a.name.localeCompare(b.name));
       merged.forEach((it, idx) => {
         const row = document.createElement('div'); row.className='item';
         const left = document.createElement('div');
@@ -87,7 +96,15 @@
       showToast('Saved. Syncing in background…', 700);
       setTimeout(()=>{ window.close(); }, 650);
     }
-    async function persist(){ await window.EQCM.setRaidKit({ items: kit.custom, hidden: kit.hidden }); kit = await window.EQCM.getRaidKit(); render(); setStatus('Saved'); }
+    async function persist(){
+      try{
+        const payload = { items: normalizeCustom(kit.custom), hidden: kit.hidden||[] };
+        await window.EQCM.setRaidKit(payload);
+        kit = await window.EQCM.getRaidKit();
+        render();
+        setStatus('Saved');
+      }catch(e){ alert('Save failed: ' + (e && e.message || e)); }
+    }
     window.addEventListener('DOMContentLoaded', ()=>{ load(); });
   </script>
 </head>
