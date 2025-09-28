@@ -1116,7 +1116,7 @@ const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   return baseRow.concat(extraVals);
 });
 const iRowsOut = filterRowsByFavorites(iRows);
-writeCsv(path.join(dir, 'Raid Kit Summary.csv'), fullHead, iRowsOut);
+writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut);
 
   // per-character CSV
   for (const [char, inv] of Object.entries(state.inventory || {})){
