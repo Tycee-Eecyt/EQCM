@@ -51,6 +51,7 @@ function filterRowsByFavorites(rows){
 const os = require('os');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
@@ -615,6 +616,8 @@ function buildRaidKitExtrasForCharacter(character){
 // One-shot replace-all import to Apps Script
 async function sendReplaceAllWebhook(opts){
   const notify = !!(opts && (opts.notify === true));
+  const forceEnv = String(process.env.FORCE_REPLACE_ALL || '').toLowerCase();
+  const forceFlag = (opts && opts.force === true) || (forceEnv === '1' || forceEnv === 'true' || forceEnv === 'yes');
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) { log('ReplaceAll skipped: remoteSheetsEnabled=false'); return; }
   const url = (state.settings.appsScriptUrl||'').trim();
@@ -634,10 +637,32 @@ async function sendReplaceAllWebhook(opts){
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   const enabledFixed = buildEnabledFixedColumns();
-  const payload = { secret, action: 'replaceAll', meta: { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) }, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
+  const meta = { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) };
+  const upserts = { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails };
+  const payload = { secret, action: 'replaceAll', meta, upserts };
+
+  // Debounce: compute digest of what would be sent (excluding secret)
+  try{
+    const sortKeys = (v) => {
+      if (!v || typeof v !== 'object') return v;
+      if (Array.isArray(v)) return v.map(sortKeys);
+      const out = {};
+      Object.keys(v).sort().forEach(k => { out[k] = sortKeys(v[k]); });
+      return out;
+    };
+    const digestObj = { action: 'replaceAll', meta, upserts };
+    const json = JSON.stringify(sortKeys(digestObj));
+    const digest = crypto.createHash('sha256').update(json).digest('hex');
+    if (state.lastReplaceAllDigest && state.lastReplaceAllDigest === digest && !forceFlag){
+      log('ReplaceAll skipped: no data changes (digest match)');
+      return;
+    }
+    payload.__digest = digest; // optional for debugging
+  } catch(e){ /* ignore digest errors */ }
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
+    if (res.status >= 200 && res.status < 300 && payload.__digest){ state.lastReplaceAllDigest = payload.__digest; saveState(); }
   }catch(e){
     log('ReplaceAll error', e.message);
   }
@@ -1406,8 +1431,8 @@ ipcMain.handle('advanced:forceBackscan', async () => {
   try { await forceBackscanMissingZones(); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
-ipcMain.handle('advanced:replaceAll', async () => {
-  try { await sendReplaceAllWebhook(); return { ok: true }; }
+ipcMain.handle('advanced:replaceAll', async (_evt, opts) => {
+  try { await sendReplaceAllWebhook(opts||{}); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
