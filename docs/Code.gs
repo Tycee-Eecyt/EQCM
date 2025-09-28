@@ -3,7 +3,7 @@ const CONFIG = {
   SECRET: '',              // Optional: set a shared secret string; leave blank to disable check
   ZONES_SHEET: 'Zone Tracker',
   FACTION_SHEET: 'CoV Faction',
-  // Renamed from 'Raid Kit Summary' to 'Raid Kit'
+  // Inventory summary tab name
   INV_SUMMARY_SHEET: 'Raid Kit',
   INV_ITEMS_SHEET: 'Inventory Items' // optional catch-all
 };
