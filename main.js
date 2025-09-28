@@ -98,7 +98,11 @@ const DEFAULT_SETTINGS = {
 
   // Backscan configuration
   backscanMaxMB: 0,             // 0 = full file; otherwise clamp 5–20 MB
-  backscanRetryMinutes: 10      // 0 disables periodic retry after first attempt
+  backscanRetryMinutes: 10,     // 0 disables periodic retry after first attempt
+
+  // Consideration heuristics
+  invisMaxMinutes: 20,          // treat self-invis as potentially active up to this long
+  combatRecentMinutes: 5        // treat combat as "recent" for this many minutes
 };
 
 let state = {
@@ -145,6 +149,9 @@ function getBackscanRetryMs(){
   const mins = Math.max(0, Number(state.settings.backscanRetryMinutes||0));
   return mins * 60 * 1000;
 }
+
+function getInvisMaxMs(){ ensureSettings(); return Math.max(1, Number(state.settings.invisMaxMinutes||20)) * 60 * 1000; }
+function getCombatRecentMs(){ ensureSettings(); return Math.max(1, Number(state.settings.combatRecentMinutes||5)) * 60 * 1000; }
 
 // ---------- state/settings I/O ----------
 function loadState(){
@@ -367,8 +374,12 @@ const RE_ZONE = /^\[(?<ts>[^\]]+)\]\s+You have entered (?<zone>.+?)\./i;
 const RE_CON  = new RegExp(String.raw`^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+(?:regards you as an ally|looks upon you warmly|kindly considers you|judges you amiably|regards you indifferently|looks your way apprehensively|glowers at you dubiously|glares at you threateningly|scowls at you).*?$`, 'i');
 const RE_INVIS_ON  = /(You vanish\.|Someone fades away\.|You gather shadows about you\.|Someone steps into the shadows and disappears\.)/i;
 const RE_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
+const RE_SELF_INVIS_ON  = /(You vanish\.|You gather shadows about you\.)/i;
+const RE_SELF_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
 const RE_SNEAK     = /(You are as quiet as a cat stalking it's prey|You are as quiet as a herd of stampeding elephants)/i;
 const RE_ATTACK    = /^.*\]\s+You\s+(?:slash|pierce|bash|crush|kick|hit|smash|backstab|strike)\b/i;
+const RE_ATTACK_NAMED_HIT  = /^\[(?<ts>[^\]]+)\]\s+You\s+(?:slash|pierce|bash|crush|kick|hit|smash|backstab|strike)\s+(?<mob>.+?)\s+for\s+\d+\s+points of damage\./i;
+const RE_ATTACK_NAMED_MISS = /^\[(?<ts>[^\]]+)\]\s+You\s+try to\s+(?:slash|pierce|punch|bash|crush|kick|hit|smash|backstab|strike)\s+(?<mob>.+?),\s+but\s+miss!$/i;
 
 // ---------- faction rules ----------
 const STANDINGS = [
@@ -720,6 +731,8 @@ async function scanLogs(){
 
       const lines = text.replace(/\r\n/g,'\n').split('\n').filter(Boolean);
       const covLast = state._covLastStable || (state._covLastStable = {});
+      const status = state._status || (state._status = {});
+      const nowState = status[char] || (status[char] = { invisOn: 0, invisOff: 0, lastCombat: 0, attacks: {} });
       if (!covLast[char]) covLast[char] = {};
 
       let sawZone = false;
@@ -739,6 +752,34 @@ async function scanLogs(){
           continue;
         }
 
+        // Track self invis on/off with timestamps
+        if (RE_SELF_INVIS_ON.test(line)){
+          const tsStr = (line.match(/^\[([^\]]+)\]/)||[])[1] || '';
+          const t = parseEqTimestamp(tsStr);
+          nowState.invisOn = t.when.getTime();
+          continue;
+        }
+        if (RE_SELF_INVIS_OFF.test(line)){
+          const tsStr = (line.match(/^\[([^\]]+)\]/)||[])[1] || '';
+          const t = parseEqTimestamp(tsStr);
+          nowState.invisOff = t.when.getTime();
+          continue;
+        }
+
+        // Track named attacks to mark recent combat per mob
+        let mAH = line.match(RE_ATTACK_NAMED_HIT);
+        let mAM = mAH ? null : line.match(RE_ATTACK_NAMED_MISS);
+        if (mAH || mAM){
+          const ts = (mAH||mAM).groups.ts;
+          const mob = (mAH||mAM).groups.mob;
+          const t = parseEqTimestamp(ts);
+          nowState.lastCombat = t.when.getTime();
+          const key = normalizeMobName(mob);
+          if (!nowState.attacks) nowState.attacks = {};
+          nowState.attacks[key] = t.when.getTime();
+          continue;
+        }
+
         // Consider
         const mC = line.match(RE_CON);
         if (mC){
@@ -750,12 +791,22 @@ async function scanLogs(){
           const standing = hit ? hit.key : 'Indifferent';
           const score = hit ? hit.score : 0;
 
-          // unstable window (look-behind)
+          // unstable window (time-based): invis can be active for minutes; combat can bias con
+          const invisMaxMs = getInvisMaxMs();
+          const combatMs = getCombatRecentMs();
+          const nowMs = t.when.getTime();
+          const invisActive = (nowState.invisOn && (!nowState.invisOff || nowState.invisOn > nowState.invisOff) && (nowMs - nowState.invisOn <= invisMaxMs));
+          const attackedThisMobRecently = (() => {
+            const key = normalizeMobName(mob);
+            const last = (nowState.attacks && nowState.attacks[key]) || 0;
+            return last && (nowMs - last <= combatMs);
+          })();
+          // keep line-based quick heuristics as secondary signals
           const lookBehind = state.settings.strictUnstable ? 10 : 3;
           const startIdx = Math.max(0, i - lookBehind);
           const window = lines.slice(startIdx, i+1);
-          const unstableInvis  = window.some(l => RE_INVIS_ON.test(l) || RE_INVIS_OFF.test(l) || RE_SNEAK.test(l));
-          const unstableCombat = window.some(l => RE_ATTACK.test(l));
+          const unstableInvis  = invisActive || window.some(l => RE_INVIS_ON.test(l) || RE_INVIS_OFF.test(l) || RE_SNEAK.test(l));
+          const unstableCombat = attackedThisMobRecently || window.some(l => RE_ATTACK.test(l));
 
           // CoV membership
           const mobNorm = normalizeMobName(mob);
@@ -766,20 +817,39 @@ async function scanLogs(){
           else { for (const name of COV_SET){ if (mobNorm.startsWith(name)) { isCov = true; break; } } }
 
           if (isCov){
-            if (unstableInvis || unstableCombat){
-              const lastMob = covLast[char][mobNorm];
-              const lastChar = state.covFaction[char];
+            // Special rules:
+            // - Invis bias: if invis is active and standing came out 'Indifferent', avoid incorrectly locking in Indifferent.
+            // - Combat bias: if we attacked this mob very recently, a hostile con may be biased; prefer fallback.
+            const lastMob = covLast[char][mobNorm];
+            const lastChar = state.covFaction[char];
+            const preferFallbackForInvis = (invisActive && standing === 'Indifferent');
+            const preferFallbackForCombat = attackedThisMobRecently && (standing === 'Threatening' || standing === 'Dubious' || standing === 'Apprehensive');
+
+            if (preferFallbackForCombat || unstableCombat){
               if (lastMob){
-                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + ' (fallback)', score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Unstable /con, applied mob fallback', char, mob);
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + ' (combat)', score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                log('Combat-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
-                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + ' (fallback)', mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
-                log('Unstable /con, applied char fallback', char, mob);
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + ' (combat)', mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                log('Combat-biased /con, applied char fallback', char, mob);
               } else {
-                state.covFaction[char] = { standing, standingDisplay: standing + ' (uncertain)', score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Unstable /con, accepted as baseline', char, mob);
+                state.covFaction[char] = { standing, standingDisplay: standing + ' (combat?)', score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                log('Combat-biased /con, accepted as baseline', char, mob);
               }
-            } else {
+            }
+            else if (preferFallbackForInvis || unstableInvis){
+              if (lastMob){
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + ' (invis)', score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                log('Invis-biased /con, applied mob fallback', char, mob);
+              } else if (lastChar){
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + ' (invis)', mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                log('Invis-biased /con, applied char fallback', char, mob);
+              } else {
+                state.covFaction[char] = { standing, standingDisplay: standing + ' (invis?)', score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                log('Invis-biased /con, accepted as baseline', char, mob);
+              }
+            }
+            else {
               state.covFaction[char] = { standing, standingDisplay: standing, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
               covLast[char][mobNorm] = state.covFaction[char];
             }

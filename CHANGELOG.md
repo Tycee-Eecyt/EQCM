@@ -27,3 +27,8 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 
 - Improvement: When a log file is seen for the first time, backscan up to 10MB from the end to find the most recent "You have entered …" line. This seeds Zone Tracker immediately even if the last zone message falls outside the initial 256KB tail.
 - Adds a small log message: "Backscan seeded last zone" with character and zone for traceability.
+## 1.9.0 — Smarter /con heuristics (invis + combat)
+
+- Track self invisibility start/stop times and treat invis as active up to 20 minutes (configurable). If a /con returns Indifferent while invis is active, prefer previous stable standing instead of locking in Indifferent.
+- Track recent attacks per mob (by name). If a /con occurs soon after attacking that mob (default 5 minutes), treat hostile results as combat-biased and prefer the previous stable standing.
+- Keeps short look-behind line heuristics but prioritizes time-window rules for reliability.
