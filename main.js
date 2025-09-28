@@ -444,14 +444,20 @@ function parseEqTimestamp(tsStr){
 
 // ---------- CSV ----------
 function writeCsv(filePath, header, rows){
+  // Returns true if file content changed
   try{
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const lines = [header.join(','), ...rows.map(r => r.map(v => {
       const s = String(v ?? '');
       return /[",\n]/.test(s) ? ('"' + s.replace(/"/g,'""') + '"') : s;
     }).join(','))];
-    fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
-  }catch(e){ log('writeCsv error', filePath, e.message); }
+    const next = lines.join('\n');
+    let prev = '';
+    try { if (fs.existsSync(filePath)) prev = fs.readFileSync(filePath, 'utf8'); } catch {}
+    if (prev === next) return false;
+    fs.writeFileSync(filePath, next, 'utf8');
+    return true;
+  }catch(e){ log('writeCsv error', filePath, e.message); return false; }
 }
 
 // ---------- Webhook helpers ----------
@@ -1010,8 +1016,8 @@ async function doScanCycle(){
     await scanLogs();
     await scanInventory();
     saveState();
-    await maybeWriteLocalSheets();
-    await maybePostWebhook();
+    const changed = await maybeWriteLocalSheets();
+    if (changed) await maybePostWebhook();
   } catch(e){
     log('[LOG] Scan cycle error:', e.message);
   }
@@ -1038,12 +1044,13 @@ async function maybeWriteLocalSheets(){
     ? Object.values(state.latestZonesByFile).map(v => [v.character||'', v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||''])
     : Object.entries(state.latestZones || {}).map(([char, v]) => [char, v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||'']);
 const zRowsOut = filterRowsByFavorites(zRows);
-  writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut);
+  let changed = false;
+  changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
   const fHead = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
   const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'').includes('fallback')? 'fallback' : (v.standingDisplay||'').includes('uncertain')? 'uncertain' : '' ]);
 const fRowsOut = filterRowsByFavorites(fRows);
-  writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut);
+  changed = writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut) || changed;
 
   const enabledFixed = buildEnabledFixedColumns();
   const fixedHeaders = enabledFixed.map(d => d.header);
@@ -1071,14 +1078,15 @@ const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   return baseRow.concat(extraVals);
 });
 const iRowsOut = filterRowsByFavorites(iRows);
-writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut);
+changed = writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut) || changed;
 
   // per-character CSV
   for (const [char, inv] of Object.entries(state.inventory || {})){
     const rows = (inv.items||[]).map(it => [char, inv.filePath||'', inv.fileCreated||'', inv.fileModified||'', it.Location||'', it.Name||'', it.ID||'', it.Count||0, it.Slots||0]);
     const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
-    writeCsv(path.join(dir, `Inventory Items - ${char}.csv`), header, rows);
+    changed = writeCsv(path.join(dir, `Inventory Items - ${char}.csv`), header, rows) || changed;
   }
+  return changed;
 }
 
 // ---------- UI ----------
@@ -1311,8 +1319,8 @@ async function forceBackscanMissingZones(){
     }
   }
   saveState();
-  await maybeWriteLocalSheets();
-  await maybePostWebhook();
+  const changed = await maybeWriteLocalSheets();
+  if (changed) await maybePostWebhook();
   log('Force backscan summary', { updated, missing });
 }
 
