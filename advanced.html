@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>EQ Character Manager — Advanced</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    label { display:block; margin-top:10px; font-weight:600; }
+    input[type="number"], input[type="text"] { width: 100%; padding: 8px; }
+    button { padding:8px 12px; }
+    .grid { display:grid; grid-template-columns: 260px 1fr auto; gap: 8px 12px; align-items:center; }
+    .small { font-size: 12px; color:#555; }
+  </style>
+</head>
+<body>
+  <h2>Advanced</h2>
+  <div class="grid">
+    <label>Backscan size (MB)</label>
+    <input id="backscanMaxMB" type="number" min="0" max="20" step="1" placeholder="0 = full file, else 5–20"/>
+    <div class="small">0 = read the full file; else read this many MB from the end.</div>
+
+    <label>Backscan retry minutes</label>
+    <input id="backscanRetryMinutes" type="number" min="0" step="1" placeholder="0 = disable periodic retry"/>
+    <div class="small">Retry backscan for files with no zone every N minutes.</div>
+  </div>
+
+  <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
+    <button onclick="saveAndClose()">Save & Close</button>
+    <button onclick="forceBackscan()">Force backscan (missing zones)</button>
+    <button onclick="replaceAll()">Full refresh to sheet</button>
+  </div>
+
+  <script>
+    const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
+    async function load(){
+      const { settings } = await window.EQCM.getSettings();
+      byId('backscanMaxMB').value = String(settings.backscanMaxMB ?? 0);
+      byId('backscanRetryMinutes').value = String(settings.backscanRetryMinutes ?? 10);
+    }
+    async function save(){
+      const payload = {
+        backscanMaxMB: Number(byId('backscanMaxMB').value),
+        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value)
+      };
+      await window.EQCM.setSettings(payload);
+    }
+    async function saveAndClose(){ await save(); window.close(); }
+    async function forceBackscan(){
+      const res = await window.EQCM.forceBackscan();
+      if (!res || res.ok !== true) alert('Force backscan error: ' + (res && res.error || 'unknown'));
+    }
+    async function replaceAll(){
+      if (!confirm('Replace all rows in Google Sheet? This will clear and rewrite Zone Tracker, CoV Faction, Inventory Summary, and Inventory Items.')) return;
+      const res = await window.EQCM.replaceAll();
+      if (!res || res.ok !== true) alert('Replace all error: ' + (res && res.error || 'unknown'));
+    }
+    load();
+  </script>
+</body>
+</html>
+

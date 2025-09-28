@@ -6,7 +6,9 @@ contextBridge.exposeInMainWorld('EQCM', {
   browseFolder: (which) => ipcRenderer.invoke('settings:browseFolder', which),
   deriveSheetId: (url) => ipcRenderer.invoke('settings:deriveSheetId', url),
   openExternal: (url) => shell.openExternal(url),
-  getCovLists: () => ipcRenderer.invoke('cov:getLists')
+  getCovLists: () => ipcRenderer.invoke('cov:getLists'),
+  forceBackscan: () => ipcRenderer.invoke('advanced:forceBackscan'),
+  replaceAll: () => ipcRenderer.invoke('advanced:replaceAll')
 });
 
 ipcRenderer.on('settings:discoveredChars', (_e, chars) => {

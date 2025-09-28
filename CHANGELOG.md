@@ -42,3 +42,8 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 
 - Settings: Remove CoV Mob List section (now available under tray → CoV Mob List…).
 - Combat parsing: Add spell hit detection (Your <spell> hits <mob>…, You blast/smite <mob>…, <mob> has taken N damage from your …) to mark recent combat per mob.
+## 1.9.3 — Advanced page + classic icons
+
+- Moved Force Backscan, Full Refresh to Sheet, and Backscan configuration to a new Advanced window (tray → Advanced…).
+- Settings page simplified (advanced options removed).
+- Added simple classic-style icons in assets: `assets/simple-eq-1999.svg`, `assets/simple-xp-orb.svg`, `assets/simple-xp-shield.svg`.

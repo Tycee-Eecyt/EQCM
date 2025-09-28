@@ -1047,23 +1047,10 @@ function buildMenu(){
     buildPushInventorySubmenu(),
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
+    { label: 'Advanced…', click: openAdvancedWindow },
     { type: 'separator' },
     { label: 'Docs (Sheets deploy)', click: openDocsWindow },
-    { label: 'Full refresh to sheet (replace all)', click: async () => {
-        try{
-          const url = (state.settings.appsScriptUrl||'').trim();
-          if (!url || !isLikelyAppsScriptExec(url)) { dialog.showMessageBox({ type: 'warning', message: 'Apps Script URL is not set or invalid.' }); return; }
-          const res = await dialog.showMessageBox({
-            type: 'question', buttons: ['Cancel','Proceed'], defaultId: 1, cancelId: 0,
-            message: 'Replace all rows in Google Sheet?',
-            detail: 'This will clear and rewrite Zone Tracker, CoV Faction, Inventory Summary, and Inventory Items using current data.'
-          });
-          if (res.response === 1) await sendReplaceAllWebhook();
-        }catch(e){ log('ReplaceAll menu error', e.message); }
-      }
-    },
     { label: 'Rescan now', click: () => { doScanCycle(); } },
-    { label: 'Force backscan (missing zones)', click: async () => { try { await forceBackscanMissingZones(); } catch(e){ log('Force backscan error', e.message); } } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { label: 'Open local CSV folder', click: () => {
         const outDir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
@@ -1098,6 +1085,12 @@ function openCovWindow(){
   const win = new BrowserWindow({ width: 900, height: 740, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'cov-list.html'));
+  makeHidable(win);
+}
+function openAdvancedWindow(){
+  const win = new BrowserWindow({ width: 800, height: 600, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  win.setMenu(null);
+  win.loadFile(path.join(__dirname, 'advanced.html'));
   makeHidable(win);
 }
 
@@ -1175,6 +1168,14 @@ ipcMain.handle('cov:getLists', async () => {
       removals: Array.from((state.settings.covRemovals||[]))
     };
   } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
+});
+ipcMain.handle('advanced:forceBackscan', async () => {
+  try { await forceBackscanMissingZones(); return { ok: true }; }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+});
+ipcMain.handle('advanced:replaceAll', async () => {
+  try { await sendReplaceAllWebhook(); return { ok: true }; }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
   let title = 'Select Folder';
