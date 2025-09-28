@@ -1424,7 +1424,8 @@ ipcMain.handle('cov:getLists', async () => {
       defaults,
       merged: Array.from(mergedSet),
       additions: Array.from((state.settings.covAdditions||[])),
-      removals: Array.from((state.settings.covRemovals||[]))
+      removals: Array.from((state.settings.covRemovals||[])),
+      acceptAllConsiders: !!state.settings.acceptAllConsiders
     };
   } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
 });
