@@ -387,7 +387,6 @@ function getCovSet(){ return buildCovSet(); }
 // ---------- Raider Kit (defaults + user) ----------
 const DEFAULT_RAID_KIT = [
   { name: 'Vial of Velium Vapors', mode: 'present', pattern: '^Vial of Velium Vapors$' },
-  { name: 'Velium Vial',           mode: 'count',   pattern: '^Velium Vial$' },
   { name: 'Leatherfoot Raider Skullcap', mode: 'present', pattern: '^Leatherfoot Raider Skullcap$' },
   { name: 'Shiny Brass Idol',      mode: 'present', pattern: '^Shiny Brass Idol$' },
   { name: 'Ring of Shadows',       mode: 'count',   pattern: '^Ring of Shadows$' },
@@ -399,6 +398,8 @@ const DEFAULT_RAID_KIT = [
   { name: 'Mana Battery - Class Three', mode: 'count', pattern: '^Mana Battery - Class Three$' },
   { name: 'Mana Battery - Class Two', mode: 'count', pattern: '^Mana Battery - Class Two$' },
   { name: 'Mana Battery - Class One', mode: 'count', pattern: '^Mana Battery - Class One$' },
+  { name: '10 Dose Potion of Stinging Wort', mode: 'count', pattern: '^10 Dose Potion of Stinging Wort$' },
+  { name: 'Pegasus Feather Cloak', mode: 'present', pattern: '^Pegasus Feather Cloak$' },
   { name: "Larrikan's Mask",      mode: 'present', pattern: "^Larrikan'?s Mask$" }
 ];
 function getMergedRaidKit(){
@@ -575,7 +576,6 @@ function getRaidKitSummary(items){
   };
   return {
     vialVeliumVapors: has('^Vial of Velium Vapors$') ? 'Y' : 'N',
-    veliumVialCount: count('^Velium Vial$'),
     leatherfootSkullcap: has("^Leatherfoot Raider Skullcap$") ? 'Y' : 'N',
     shinyBrassIdol: has("^Shiny Brass Idol$") ? 'Y' : 'N',
     ringOfShadowsCount: count("^Ring of Shadows$"),
@@ -587,6 +587,8 @@ function getRaidKitSummary(items){
     mbClassThree: count("^Mana Battery - Class Three$"),
     mbClassTwo: count("^Mana Battery - Class Two$"),
     mbClassOne: count("^Mana Battery - Class One$"),
+    tenDosePotionOfStingingWortCount: count('^10 Dose Potion of Stinging Wort$'),
+    pegasusFeatherCloak: has('^Pegasus Feather Cloak$') ? 'Y' : 'N',
     larrikansMask: has("^Larrikan'?s Mask$") ? 'Y' : 'N'
   };
 }
@@ -625,9 +627,10 @@ async function maybePostWebhook(){
 }
 // Extra raid kit beyond fixed columns
 const FIXED_RK_NAMES = new Set([
-  'Vial of Velium Vapors','Velium Vial','Leatherfoot Raider Skullcap','Shiny Brass Idol',
+  'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol',
   'Ring of Shadows','Reaper of the Dead','Pearl','Peridot',
   'Mana Battery - Class Five','Mana Battery - Class Four','Mana Battery - Class Three','Mana Battery - Class Two','Mana Battery - Class One',
+  '10 Dose Potion of Stinging Wort','Pegasus Feather Cloak',
   "Larrikan's Mask"
 ]);
 function buildRaidKitExtrasForCharacter(character){
@@ -1087,8 +1090,8 @@ const fRowsOut = filterRowsByFavorites(fRows);
   writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut);
 
   const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                 'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                 'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count','Larrikan\'s Mask',
+                 'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
+                 'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak','Larrikan\'s Mask',
                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One',
                  'Spreadsheet URL','Suggested Sheet Name'];
   // Determine dynamic extra headers from merged raid kit (excluding fixed)
@@ -1103,8 +1106,8 @@ const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const kit = getRaidKitSummary(v.items||[]);
   const suggested = `Inventory - ${char}`;
   const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
-          kit.vialVeliumVapors, kit.veliumVialCount, kit.leatherfootSkullcap, kit.shinyBrassIdol,
-          kit.ringOfShadowsCount, kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.larrikansMask,
+          kit.vialVeliumVapors, kit.leatherfootSkullcap, kit.shinyBrassIdol, kit.ringOfShadowsCount,
+          kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.tenDosePotionOfStingingWortCount, kit.pegasusFeatherCloak, kit.larrikansMask,
           kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
           (state.settings.sheetUrl||''), suggested];
   const exList = buildRaidKitExtrasForCharacter(char);
