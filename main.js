@@ -1114,7 +1114,13 @@ function getTrayIconImage(){
     const ico = nativeImage.createFromPath(icoPath);
     if (ico && !ico.isEmpty()) return ico;
   }
-  const prefer = tryCreateImageFromSvg(svgPath);
+  let prefer = tryCreateImageFromSvg(svgPath);
+  if (!prefer || prefer.isEmpty()){
+    // Embedded minimal 16x16 shield-like SVG for reliable tray rendering
+    const inline = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' ry='3' fill='#2f7ed8'/><path d='M8 2 l5 2 v4 c0 3-3 5-5 6 c-2-1-5-3-5-6 v-4z' fill='#ffffff'/></svg>";
+    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(inline, 'utf8').toString('base64');
+    try { prefer = nativeImage.createFromDataURL(dataUrl); } catch { prefer = null; }
+  }
   if (prefer && !prefer.isEmpty()){
     const resized = prefer.resize({ width: 24, height: 24, quality: 'best' });
     if (!resized.isEmpty()) return resized;
@@ -1131,7 +1137,12 @@ function getWindowIconImage(){
     const ico = nativeImage.createFromPath(icoPath);
     if (ico && !ico.isEmpty()) return ico;
   }
-  const prefer = tryCreateImageFromSvg(svgPath);
+  let prefer = tryCreateImageFromSvg(svgPath);
+  if (!prefer || prefer.isEmpty()){
+    const inline = "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' ry='3' fill='#2f7ed8'/><path d='M8 2 l5 2 v4 c0 3-3 5-5 6 c-2-1-5-3-5-6 v-4z' fill='#ffffff'/></svg>";
+    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(inline, 'utf8').toString('base64');
+    try { prefer = nativeImage.createFromDataURL(dataUrl); } catch { prefer = null; }
+  }
   if (prefer && !prefer.isEmpty()){
     const resized = prefer.resize({ width: 64, height: 64, quality: 'best' });
     if (!resized.isEmpty()) return resized;
