@@ -554,7 +554,12 @@ async function maybePostWebhook(){
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
   const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: getRaidKitSummary(v.items||[]) }));
+  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
+    const kit = getRaidKitSummary(v.items||[]);
+    const extras = buildRaidKitExtrasForCharacter(character);
+    const exMap = {}; extras.forEach(e => exMap[e.header]=e.value);
+    return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
+  });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   const payload = { secret, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
@@ -570,6 +575,31 @@ async function maybePostWebhook(){
   }
   catch(e){ log('Webhook error', e.message); }
 }
+// Extra raid kit beyond fixed columns
+const FIXED_RK_NAMES = new Set([
+  'Vial of Velium Vapors','Velium Vial','Leatherfoot Raider Skullcap','Shiny Brass Idol',
+  'Ring of Shadows','Reaper of the Dead','Pearl','Peridot',
+  'Mana Battery - Class Five','Mana Battery - Class Four','Mana Battery - Class Three','Mana Battery - Class Two','Mana Battery - Class One',
+  "Larrikan's Mask"
+]);
+function buildRaidKitExtrasForCharacter(character){
+  const inv = (state.inventory||{})[character];
+  const items = (inv && inv.items) ? inv.items : [];
+  const merged = getMergedRaidKit();
+  const extras = [];
+  for (const k of merged){
+    if (FIXED_RK_NAMES.has(k.name)) continue;
+    const re = new RegExp(k.pattern||('^'+k.name+'$'), 'i');
+    let count=0, present=false;
+    for (const it of (items||[])){
+      if (re.test(String(it.Name||''))){ present=true; count += Number(it.Count||0); }
+    }
+    const header = k.mode==='count' ? (k.name + ' Count') : k.name;
+    const value = k.mode==='count' ? (count||0) : (present?'Y':'N');
+    extras.push({ header, value });
+  }
+  return extras;
+}
 
 // One-shot replace-all import to Apps Script
 async function sendReplaceAllWebhook(){
@@ -583,7 +613,12 @@ async function sendReplaceAllWebhook(){
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
   const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: getRaidKitSummary(v.items||[]) }));
+  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
+    const kit = getRaidKitSummary(v.items||[]);
+    const extras = buildRaidKitExtrasForCharacter(character);
+    const exMap = {}; extras.forEach(e => exMap[e.header]=e.value);
+    return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
+  });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   const payload = { secret, action: 'replaceAll', upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
@@ -1008,17 +1043,29 @@ const fRowsOut = filterRowsByFavorites(fRows);
                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count','Larrikan\'s Mask',
                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One',
                  'Spreadsheet URL','Suggested Sheet Name'];
+  // Determine dynamic extra headers from merged raid kit (excluding fixed)
+  const extraSet = new Set();
+  for (const ch of Object.keys(state.inventory||{})){
+    const extras = buildRaidKitExtrasForCharacter(ch);
+    extras.forEach(e => extraSet.add(e.header));
+  }
+  const extraHeaders = Array.from(extraSet);
+  const fullHead = iHead.concat(extraHeaders);
 const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const kit = getRaidKitSummary(v.items||[]);
   const suggested = `Inventory - ${char}`;
-  return [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
+  const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
           kit.vialVeliumVapors, kit.veliumVialCount, kit.leatherfootSkullcap, kit.shinyBrassIdol,
           kit.ringOfShadowsCount, kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.larrikansMask,
           kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
           (state.settings.sheetUrl||''), suggested];
+  const exList = buildRaidKitExtrasForCharacter(char);
+  const exMap = {}; exList.forEach(e => exMap[e.header]=e.value);
+  const extraVals = extraHeaders.map(h => exMap[h] ?? '');
+  return baseRow.concat(extraVals);
 });
 const iRowsOut = filterRowsByFavorites(iRows);
-writeCsv(path.join(dir, 'Inventory Summary.csv'), iHead, iRowsOut);
+writeCsv(path.join(dir, 'Inventory Summary.csv'), fullHead, iRowsOut);
 
   // per-character CSV
   for (const [char, inv] of Object.entries(state.inventory || {})){

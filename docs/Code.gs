@@ -3,7 +3,7 @@ const CONFIG = {
   SECRET: '',              // Optional: set a shared secret string; leave blank to disable check
   ZONES_SHEET: 'Zone Tracker',
   FACTION_SHEET: 'CoV Faction',
-  INV_SUMMARY_SHEET: 'Inventory Summary',
+  INV_SUMMARY_SHEET: 'Raid Kit Summary',
   INV_ITEMS_SHEET: 'Inventory Items' // optional catch-all
 };
 
@@ -115,32 +115,51 @@ function replaceFactions_(ss, rows){
 }
 
 function upsertInventorySummary_(ss, rows){
-  const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                  'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
-                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
+                'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
+                'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
+                'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+  // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
+  const extrasSet = new Set();
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = Array.from(extrasSet);
+  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = rows.map(o => [o.character,o.file,o.logFile,o.created,o.modified,
-                              o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
-                              o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
-                              o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
-                              o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                              o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ]);
+  const data = (rows||[]).map(o => {
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
+                      o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
+                      o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
+                      o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
+                      o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
+                      o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
+    const ex = o.kitExtras||{};
+    const extraVals = extras.map(h => ex[h] ?? '');
+    return baseVals.concat(extraVals);
+  });
   upsertRowsByKey_(sh, header, 'Character', data);
 }
 
 function replaceInventorySummary_(ss, rows){
-  const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                  'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
-                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
+                'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
+                'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
+                'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+  const extrasSet = new Set();
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = Array.from(extrasSet);
+  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = (rows||[]).map(o => [o.character,o.file,o.logFile,o.created,o.modified,
-                              o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
-                              o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
-                              o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
-                              o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                              o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ]);
+  const data = (rows||[]).map(o => {
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
+                      o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
+                      o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
+                      o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
+                      o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
+                      o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
+    const ex = o.kitExtras||{};
+    const extraVals = extras.map(h => ex[h] ?? '');
+    return baseVals.concat(extraVals);
+  });
   writeAllRows_(sh, header, data);
 }
 
