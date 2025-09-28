@@ -18,6 +18,10 @@ function doPost(e){
     if (body.action === 'pushInventorySheet'){
       return respond_(pushInventorySheet_(ss, body));
     }
+    if (body.action === 'replaceAll'){
+      replaceAll_(ss, body);
+      return respond_({ ok: true, mode: 'replaceAll' });
+    }
 
     const upserts = body.upserts || {};
     if (upserts.zones)    upsertZones_(ss, upserts.zones);
@@ -73,6 +77,14 @@ function upsertRowsByKey_(sh, header, keyCol, rows){
   });
 }
 
+function writeAllRows_(sh, header, rows){
+  sh.clearContents();
+  sh.getRange(1,1,1,header.length).setValues([header]);
+  if (rows && rows.length){
+    sh.getRange(2,1,rows.length,header.length).setValues(rows);
+  }
+}
+
 function upsertZones_(ss, rows){
   const header = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
   const sh = getOrMakeSheet_(ss, CONFIG.ZONES_SHEET);
@@ -81,11 +93,25 @@ function upsertZones_(ss, rows){
   upsertRowsByKey_(sh, header, 'Source Log File', data);
 }
 
+function replaceZones_(ss, rows){
+  const header = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
+  const sh = getOrMakeSheet_(ss, CONFIG.ZONES_SHEET);
+  const data = (rows||[]).map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
+  writeAllRows_(sh, header, data);
+}
+
 function upsertFactions_(ss, rows){
   const header = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
   const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
   const data = rows.map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
   upsertRowsByKey_(sh, header, 'Character', data);
+}
+
+function replaceFactions_(ss, rows){
+  const header = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
+  const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
+  const data = (rows||[]).map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
+  writeAllRows_(sh, header, data);
 }
 
 function upsertInventorySummary_(ss, rows){
@@ -103,6 +129,21 @@ function upsertInventorySummary_(ss, rows){
   upsertRowsByKey_(sh, header, 'Character', data);
 }
 
+function replaceInventorySummary_(ss, rows){
+  const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
+                  'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
+                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
+                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+  const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
+  const data = (rows||[]).map(o => [o.character,o.file,o.logFile,o.created,o.modified,
+                              o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
+                              o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
+                              o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
+                              o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
+                              o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ]);
+  writeAllRows_(sh, header, data);
+}
+
 function upsertInventoryDetails_(ss, rows){
   const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
   const sh = getOrMakeSheet_(ss, CONFIG.INV_ITEMS_SHEET);
@@ -114,6 +155,26 @@ function upsertInventoryDetails_(ss, rows){
     });
   });
   if (data.length) sh.getRange(sh.getLastRow()+1,1,data.length,header.length).setValues(data);
+}
+
+function replaceInventoryDetails_(ss, rows){
+  const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
+  const sh = getOrMakeSheet_(ss, CONFIG.INV_ITEMS_SHEET);
+  const data = [];
+  (rows||[]).forEach(o => {
+    (o.items||[]).forEach(it => {
+      data.push([o.character, o.file, o.created, o.modified, it.Location, it.Name, it.ID, it.Count, it.Slots]);
+    });
+  });
+  writeAllRows_(sh, header, data);
+}
+
+function replaceAll_(ss, body){
+  const up = body.upserts || body || {};
+  if (up.zones)    replaceZones_(ss, up.zones);
+  if (up.factions) replaceFactions_(ss, up.factions);
+  if (up.inventory) replaceInventorySummary_(ss, up.inventory);
+  if (up.inventoryDetails) replaceInventoryDetails_(ss, up.inventoryDetails);
 }
 
 // Create a NEW sheet tab with a character's inventory (similar to screenshot)
