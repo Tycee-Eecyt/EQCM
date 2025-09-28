@@ -44,12 +44,40 @@
         box.appendChild(row);
       });
     }
-    async function removeItem(name){ const i=(kit.custom||[]).findIndex(x=>x.name===name); if(i>=0) kit.custom.splice(i,1); else kit.hidden=Array.from(new Set([...(kit.hidden||[]), name])); await persist(); }
-    async function addItem(){ const name=(document.getElementById('newName').value||'').trim(); const mode=(document.getElementById('newMode').value||'present'); if(!name) return; document.getElementById('newName').value=''; document.getElementById('newMode').value='present'; kit.custom=Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name, mode }) ])).map(s=>JSON.parse(s)); await persist(); }
+    async function removeItem(name){ const i=(kit.custom||[]).findIndex(x=>String(x.name)===String(name)); if(i>=0) kit.custom.splice(i,1); else kit.hidden=Array.from(new Set([...(kit.hidden||[]), name])); await persist(); }
+    async function addItem(){
+      const name=(document.getElementById('newName').value||'').trim();
+      const mode=(document.getElementById('newMode').value||'present');
+      if(!name) return;
+      document.getElementById('newName').value=''; document.getElementById('newMode').value='present';
+      const idx=(kit.custom||[]).findIndex(x=>String(x.name)===name);
+      const pattern='^'+escapeRe(name)+'$';
+      if(idx>=0){ kit.custom[idx].mode=(mode==='count'?'count':'present'); if(!kit.custom[idx].pattern) kit.custom[idx].pattern=pattern; }
+      else { kit.custom=(kit.custom||[]).concat([{ name, mode:(mode==='count'?'count':'present'), pattern }]); }
+      await persist();
+    }
     function editItem(idx, oldName){ window._editingIdx=idx; window._editingName=oldName; render(); }
     function cancelEdit(){ window._editingIdx=-1; window._editingName=''; render(); }
     function escapeRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-    async function saveEdit(idx, oldName){ const inp=document.getElementById('edit-name-'+idx); const newName=(inp&&inp.value?String(inp.value).trim():''); const modeSel=document.getElementById('edit-mode-'+idx); const mode=(modeSel&&modeSel.value)||'present'; window._editingIdx=-1; window._editingName=''; if(!newName||newName===oldName){ render(); return; } const customIdx=(kit.custom||[]).findIndex(x=>x.name===oldName); if(customIdx>=0){ kit.custom[customIdx].name=newName; kit.custom[customIdx].mode=(mode==='count'?'count':'present'); if(!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern='^'+escapeRe(newName)+'$'; } else { kit.hidden=Array.from(new Set([...(kit.hidden||[]), oldName])); const pattern='^'+escapeRe(newName)+'$'; kit.custom=Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name:newName, mode:(mode==='count'?'count':'present'), pattern }) ])).map(s=>JSON.parse(s)); } await persist(); }
+    async function saveEdit(idx, oldName){
+      const inp=document.getElementById('edit-name-'+idx);
+      const newName=(inp&&inp.value?String(inp.value).trim():'');
+      const modeSel=document.getElementById('edit-mode-'+idx);
+      const mode=(modeSel&&modeSel.value)||'present';
+      window._editingIdx=-1; window._editingName='';
+      if(!newName||newName===oldName){ render(); return; }
+      const customIdx=(kit.custom||[]).findIndex(x=>String(x.name)===String(oldName));
+      if(customIdx>=0){
+        kit.custom[customIdx].name=newName;
+        kit.custom[customIdx].mode=(mode==='count'?'count':'present');
+        if(!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern='^'+escapeRe(newName)+'$';
+      } else {
+        kit.hidden=Array.from(new Set([...(kit.hidden||[]), oldName]));
+        const pattern='^'+escapeRe(newName)+'$';
+        kit.custom=(kit.custom||[]).concat([{ name:newName, mode:(mode==='count'?'count':'present'), pattern }]);
+      }
+      await persist();
+    }
     async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(); }
     function showToast(msg, dur=800){ const t=document.getElementById('toast'); if(!t) return; t.textContent=msg||''; t.style.display='block'; setTimeout(()=>{ t.style.display='none'; }, dur); }
     async function saveAndClose(){
