@@ -20,7 +20,7 @@ if (typeof getLogId !== 'function') {
 }
 
 // EQ Character Manager — v1.6.0 — Author: Tyler A
-const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, Notification } = require('electron');
+const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -632,20 +632,8 @@ async function sendReplaceAllWebhook(opts){
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
-    if (notify) {
-      try {
-        const ok = (res.status >= 200 && res.status < 300);
-        if (Notification && Notification.isSupported()) new Notification({
-          title: 'EQ Character Manager',
-          body: ok ? 'Raid kit sync complete.' : `Raid kit sync returned ${res.status}`
-        }).show();
-      } catch {}
-    }
   }catch(e){
     log('ReplaceAll error', e.message);
-    if (notify) {
-      try { if (Notification && Notification.isSupported()) new Notification({ title: 'EQ Character Manager', body: 'Raid kit sync failed.' }).show(); } catch {}
-    }
   }
 }
 
@@ -1384,9 +1372,8 @@ ipcMain.handle('raidkit:saveAndPush', async (evt, payload) => {
     state.settings.raidKitItems = items;
     state.settings.raidKitHidden = hidden;
     saveSettings();
-    // Notify user and trigger push in background without blocking the UI
-    try { if (Notification && Notification.isSupported()) new Notification({ title: 'EQ Character Manager', body: 'Raid kit saved. Syncing in background…' }).show(); } catch {}
-    setImmediate(() => { sendReplaceAllWebhook({ notify: true }).catch(() => {}); });
+    // Trigger push in background without blocking the UI
+    setImmediate(() => { sendReplaceAllWebhook().catch(() => {}); });
     return { ok: true };
   } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });

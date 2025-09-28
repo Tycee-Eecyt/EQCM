@@ -11,7 +11,6 @@
     .list { border:1px solid #ddd; max-height:360px; overflow:auto; padding:8px; }
     .item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid #f1f1f1; }
     .small { font-size: 12px; color:#555; }
-    #toast { position: fixed; right: 16px; bottom: 16px; background: rgba(30,30,30,0.92); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: none; z-index: 9999; }
   </style>
   <script>
     let kit = { defaults: [], custom: [], hidden: [], merged: [] };
@@ -88,13 +87,11 @@
       await persist();
     }
     async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(); }
-    function showToast(msg, dur=800){ const t=document.getElementById('toast'); if(!t) return; t.textContent=msg||''; t.style.display='block'; setTimeout(()=>{ t.style.display='none'; }, dur); }
     async function saveAndClose(){
       // Save instantly and trigger background push without blocking the UI
       try { await window.EQCM.saveRaidKitAndPush({ items: kit.custom, hidden: kit.hidden }); } catch(e) {}
-      // Brief toast for user feedback, then close
-      showToast('Saved. Syncing in background…', 700);
-      setTimeout(()=>{ window.close(); }, 650);
+      // Close immediately
+      window.close();
     }
     async function persist(){
       try{
@@ -127,6 +124,5 @@
     <button onclick="resetCustom()">Reset Custom Items</button>
     <span id="status" class="small" style="color:#555"></span>
   </div>
-  <div id="toast"></div>
 </body>
 </html>
