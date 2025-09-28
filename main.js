@@ -396,6 +396,10 @@ const RE_MOB_HIT_YOU    = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+(?:hits|kicks|bash
 const RE_MOB_TRY_HIT_YOU= /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+tries to\s+(?:hit|bash)\s+YOU\b/i;
 const RE_MOB_NON_MELEE  = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+was hit by non-melee\b/i;
 const RE_MOB_THORNS     = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+was pierced by thorns\b/i;
+// Spell damage (player to mob)
+const RE_SPELL_YOUR_HITS = /^\[(?<ts>[^\]]+)\]\s+Your\s+.+?\s+hits\s+(?<mob>.+?)\s+for\s+\d+\s+points? of (?:\w+\s+)?damage\./i;
+const RE_SPELL_YOU_HIT   = /^\[(?<ts>[^\]]+)\]\s+You\s+(?:blast|smite|burn|shock|freeze|immolate|incinerate|strike|hit)\s+(?<mob>.+?)\s+for\s+\d+\s+points? of (?:\w+\s+)?damage\./i;
+const RE_SPELL_DOT_TICK  = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+has taken\s+\d+\s+damage from your\s+.+?\./i;
 
 // ---------- faction rules ----------
 const STANDINGS = [
@@ -795,6 +799,9 @@ async function scanLogs(){
         const mTY = (!mAH && !mAM && !mAA && !mHY) ? line.match(RE_MOB_TRY_HIT_YOU) : null;
         const mNM = (!mAH && !mAM && !mAA && !mHY && !mTY) ? line.match(RE_MOB_NON_MELEE) : null;
         const mTH = (!mAH && !mAM && !mAA && !mHY && !mTY && !mNM) ? line.match(RE_MOB_THORNS) : null;
+        const mSH = (!mAH && !mAM && !mAA && !mHY && !mTY && !mNM && !mTH) ? line.match(RE_SPELL_YOUR_HITS) : null;
+        const mYH = (!mAH && !mAM && !mAA && !mHY && !mTY && !mNM && !mTH && !mSH) ? line.match(RE_SPELL_YOU_HIT) : null;
+        const mDT = (!mAH && !mAM && !mAA && !mHY && !mTY && !mNM && !mTH && !mSH && !mYH) ? line.match(RE_SPELL_DOT_TICK) : null;
         if (mAH || mAM){
           const ts = (mAH||mAM).groups.ts;
           const mob = (mAH||mAM).groups.mob;
@@ -813,8 +820,8 @@ async function scanLogs(){
           nowState.lastCombat = t.when.getTime();
           continue;
         }
-        if (mHY || mTY || mNM || mTH){
-          const g = (mHY||mTY||mNM||mTH).groups;
+        if (mHY || mTY || mNM || mTH || mSH || mYH || mDT){
+          const g = (mHY||mTY||mNM||mTH||mSH||mYH||mDT).groups;
           const t = parseEqTimestamp(g.ts);
           nowState.lastCombat = t.when.getTime();
           const key = normalizeMobName(g.mob);

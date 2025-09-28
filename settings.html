@@ -73,35 +73,11 @@
     Use the tray menu → <b>Push inventory to sheet</b> to create a new tab like the screenshot, one per character.
   </p>
 
-  <hr/>
-  <h3>CoV Mob List</h3>
-  <div class="small">Defaults are bundled. Add custom mobs or hide defaults below.</div>
-  <details style="margin-top:8px">
-    <summary>View default CoV list (<span id="covDefaultCount">0</span>)</summary>
-    <div class="listbox" id="covDefaults" style="margin-top:6px; white-space:pre-wrap"></div>
-  </details>
-  <div style="display:grid; grid-template-columns: 200px 1fr auto; gap:8px 12px; align-items:center; margin-top:12px">
-    <label>Add mobs</label>
-    <input id="covAddInput" type="text" placeholder="e.g., a wyvern"/>
-    <button onclick="covAdd()">Add</button>
-
-    <div></div>
-    <div id="covAdditions" class="listbox"></div>
-    <div></div>
-
-    <label>Remove default mobs</label>
-    <input id="covRemoveInput" type="text" placeholder="Exact name from defaults"/>
-    <button onclick="covRemove()">Remove</button>
-
-    <div></div>
-    <div id="covRemovals" class="listbox"></div>
-    <div></div>
-  </div>
+  
 
   <script>
     const els = {};
     function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
-    let _cov = { defaults: [], merged: [], additions: [], removals: [] };
     async function load(){
       const { settings } = await window.EQCM.getSettings();
       ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
@@ -109,7 +85,6 @@
       byId('backscanRetryMinutes').value = String(settings.backscanRetryMinutes ?? 10);
       ['localSheetsEnabled','remoteSheetsEnabled'].forEach(k => byId(k).checked = !!settings[k]);
       byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
-      await renderCov();
     }
     async function save(){
       const payload = {
@@ -123,62 +98,11 @@
         localSheetsEnabled: byId('localSheetsEnabled').checked,
         remoteSheetsEnabled: byId('remoteSheetsEnabled').checked,
         backscanMaxMB: Number(byId('backscanMaxMB').value),
-        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value),
-        covAdditions: _cov.additions || [],
-        covRemovals: _cov.removals || []
+        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value)
       };
       await window.EQCM.setSettings(payload);
     }
     async function saveAndClose(){ await save(); window.close(); }
-    async function renderCov(){
-      const lists = await window.EQCM.getCovLists();
-      _cov = lists || { defaults: [], merged: [], additions: [], removals: [] };
-      byId('covDefaultCount').innerText = String((_cov.defaults||[]).length);
-      byId('covDefaults').innerText = (_cov.defaults||[]).join('\n');
-      renderCovBoxes();
-    }
-    function renderCovBoxes(){
-      const addBox = byId('covAdditions');
-      addBox.innerHTML = '';
-      (_cov.additions||[]).forEach((name, i) => {
-        const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center';
-        const span = document.createElement('span'); span.textContent = name; row.appendChild(span);
-        const btn = document.createElement('button'); btn.textContent = 'Remove'; btn.onclick = async () => {
-          _cov.additions.splice(i,1);
-          await window.EQCM.setSettings({ covAdditions: _cov.additions });
-          renderCov();
-        }; row.appendChild(btn);
-        addBox.appendChild(row);
-      });
-      const remBox = byId('covRemovals');
-      remBox.innerHTML = '';
-      (_cov.removals||[]).forEach((name, i) => {
-        const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center';
-        const span = document.createElement('span'); span.textContent = name; row.appendChild(span);
-        const btn = document.createElement('button'); btn.textContent = 'Unhide'; btn.onclick = async () => {
-          _cov.removals.splice(i,1);
-          await window.EQCM.setSettings({ covRemovals: _cov.removals });
-          renderCov();
-        }; row.appendChild(btn);
-        remBox.appendChild(row);
-      });
-    }
-    async function covAdd(){
-      const v = byId('covAddInput').value.trim(); if (!v) return;
-      byId('covAddInput').value = '';
-      const next = Array.from(new Set([ ...(_cov.additions||[]), v ]));
-      _cov.additions = next;
-      await window.EQCM.setSettings({ covAdditions: next });
-      renderCov();
-    }
-    async function covRemove(){
-      const v = byId('covRemoveInput').value.trim(); if (!v) return;
-      byId('covRemoveInput').value = '';
-      const next = Array.from(new Set([ ...(_cov.removals||[]), v ]));
-      _cov.removals = next;
-      await window.EQCM.setSettings({ covRemovals: next });
-      renderCov();
-    }
     async function pick(which){
       const res = await window.EQCM.browseFolder(which);
       if (res && res.path) byId(which).value = res.path;

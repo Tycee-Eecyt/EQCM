@@ -38,3 +38,7 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Settings: Add CoV Mob List section to view the bundled default list and manage overrides.
 - Users can add mobs or hide defaults with simple Add/Remove controls. Changes apply immediately and affect /con matching.
 - Default list updated to include “a wyvern”.
+## 1.9.2 — Settings cleanup + spell hit parsing
+
+- Settings: Remove CoV Mob List section (now available under tray → CoV Mob List…).
+- Combat parsing: Add spell hit detection (Your <spell> hits <mob>…, You blast/smite <mob>…, <mob> has taken N damage from your …) to mark recent combat per mob.
