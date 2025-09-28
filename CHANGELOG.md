@@ -33,3 +33,8 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Track recent attacks per mob (by name). If a /con occurs soon after attacking that mob (default 5 minutes), treat hostile results as combat-biased and prefer the previous stable standing.
 - Keeps short look-behind line heuristics but prioritizes time-window rules for reliability.
 - Notes now include previous standing context: when fallback is applied due to invis or combat, the note includes e.g. “(invis; prev=Kindly)” or “(combat; prev=Warmly)”.
+## 1.9.1 — CoV list viewer + easy overrides
+
+- Settings: Add CoV Mob List section to view the bundled default list and manage overrides.
+- Users can add mobs or hide defaults with simple Add/Remove controls. Changes apply immediately and affect /con matching.
+- Default list updated to include “a wyvern”.

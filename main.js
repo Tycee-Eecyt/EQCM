@@ -333,7 +333,8 @@ Zil Sapara
 Zildainez
 Zlexak
 Zynil
-a cobalt drake`;
+a cobalt drake
+a wyvern`;
 
 // ---------- normalization & matching ----------
 function simpleStem(word){
@@ -361,10 +362,20 @@ function buildCovSet(){
     const base = String(RAW_COV||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     let user = [];
     try { if (fs.existsSync(USER_COV_FILE)) user = String(fs.readFileSync(USER_COV_FILE,'utf8')).split(/\r?\n/).map(s=>s.trim()).filter(Boolean); } catch(e){}
-    const merged = Array.from(new Set(base.concat(user)));
     const fromSettings = (state.settings.covList||[]).map(s=>String(s).trim()).filter(Boolean);
-    for (const m of fromSettings) if (!merged.includes(m)) merged.push(m);
-    return new Set(merged.map(normalizeMobName));
+    const add = (state.settings.covAdditions||[]).map(s=>String(s).trim()).filter(Boolean);
+    const rem = new Set((state.settings.covRemovals||[]).map(s => normalizeMobName(String(s))));
+    // merge base + user + explicit list + additions
+    const mergedRaw = Array.from(new Set([ ...base, ...user, ...fromSettings, ...add ]));
+    // normalize and remove removals
+    const out = new Set();
+    for (const name of mergedRaw){
+      const norm = normalizeMobName(name);
+      if (!norm) continue;
+      if (rem.has(norm)) continue;
+      out.add(norm);
+    }
+    return out;
   } catch(e){ log('buildCovSet error', e.message); return new Set(); }
 }
 function getCovSet(){ return buildCovSet(); }
@@ -1112,6 +1123,19 @@ ipcMain.handle('settings:set', async (evt, payload) => {
   state.settings = Object.assign({}, state.settings, payload || {});
   saveSettings(); rebuildTray();
   return { ok: true };
+});
+ipcMain.handle('cov:getLists', async () => {
+  try{
+    ensureSettings();
+    const defaults = String(RAW_COV||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const mergedSet = getCovSet();
+    return {
+      defaults,
+      merged: Array.from(mergedSet),
+      additions: Array.from((state.settings.covAdditions||[])),
+      removals: Array.from((state.settings.covRemovals||[]))
+    };
+  } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
   let title = 'Select Folder';

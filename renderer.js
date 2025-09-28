@@ -5,7 +5,8 @@ contextBridge.exposeInMainWorld('EQCM', {
   setSettings: (payload) => ipcRenderer.invoke('settings:set', payload),
   browseFolder: (which) => ipcRenderer.invoke('settings:browseFolder', which),
   deriveSheetId: (url) => ipcRenderer.invoke('settings:deriveSheetId', url),
-  openExternal: (url) => shell.openExternal(url)
+  openExternal: (url) => shell.openExternal(url),
+  getCovLists: () => ipcRenderer.invoke('cov:getLists')
 });
 
 ipcRenderer.on('settings:discoveredChars', (_e, chars) => {
