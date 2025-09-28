@@ -82,6 +82,7 @@ RELEASES
 ### App-specific outputs (local CSV exports)
 # If you keep CSV exports inside the repo folder, ignore them.
 csv/
+sheets-out/
 **/inventory/*.csv
 **/zones.csv
 **/faction_cov.csv
