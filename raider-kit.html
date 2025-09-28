@@ -107,6 +107,10 @@
 </head>
 <body>
   <h2>Raid Kit</h2>
+  <div class="row" style="justify-content:flex-end; gap:8px; margin-bottom:8px">
+    <button onclick="saveAndClose()">Save & Close</button>
+    <button onclick="resetCustom()">Reset to Default Raid Kit</button>
+  </div>
   <p class="small">Simple CRUD: add, edit, or remove items from your raid kit. Removing a default item hides it; removing a custom item deletes it.</p>
   <h3>Add Item</h3>
   <div class="row" style="margin-bottom:8px">
@@ -119,9 +123,7 @@
   </div>
   <h3>Items</h3>
   <div class="list" id="kitList"></div>
-  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
-    <button onclick="saveAndClose()">Save & Close</button>
-    <button onclick="resetCustom()">Reset Custom Items</button>
+  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
     <span id="status" class="small" style="color:#555"></span>
   </div>
 </body>

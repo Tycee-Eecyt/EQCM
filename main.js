@@ -600,7 +600,7 @@ function buildRaidKitExtrasForCharacter(character){
       if (re.test(String(it.Name||''))){ present=true; count += Number(it.Count||0); }
     }
     const header = k.mode==='count' ? (k.name + ' Count') : k.name;
-    const value = k.mode==='count' ? (count||0) : (present?'Y':'N');
+    const value = k.mode==='count' ? (count>0 ? count : '') : (present?'Y':'N');
     extras.push({ header, value });
   }
   return extras;
