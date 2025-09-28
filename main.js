@@ -1045,6 +1045,7 @@ function buildMenu(){
   const scanSub = { label: 'Scan interval', submenu: scanChoices.map(sec => ({ label: `${sec}s${(state.settings.scanIntervalSec===sec) ? ' ✓':''}`, click: () => { state.settings.scanIntervalSec = sec; saveSettings(); restartScanning(); rebuildTray(); } })) };
   return Menu.buildFromTemplate([
     buildPushInventorySubmenu(),
+    { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
     { label: 'Advanced…', click: openAdvancedWindow },
@@ -1091,6 +1092,12 @@ function openAdvancedWindow(){
   const win = new BrowserWindow({ width: 800, height: 600, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'advanced.html'));
+  makeHidable(win);
+}
+function openRaidKitWindow(){
+  const win = new BrowserWindow({ width: 900, height: 740, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  win.setMenu(null);
+  win.loadFile(path.join(__dirname, 'raider-kit.html'));
   makeHidable(win);
 }
 
