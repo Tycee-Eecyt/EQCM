@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "test": "node tests/raidkit-core.test.js" 
   },
   "devDependencies": {
     "electron": "^30.0.0",
