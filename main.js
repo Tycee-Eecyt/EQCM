@@ -1254,6 +1254,47 @@ function getWindowIconImage(){
   return img;
 }
 
+// Generate a minimal .ico (PNG-based) from shield SVG if not present
+function ensureShieldIco(){
+  try {
+    const icoPath = path.join(__dirname, 'assets', 'simple-xp-shield.ico');
+    if (fs.existsSync(icoPath)) return;
+    const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+    const imgSvg = tryCreateImageFromSvg(svgPath);
+    if (!imgSvg || imgSvg.isEmpty()) return;
+    const icon32 = imgSvg.resize({ width: 32, height: 32, quality: 'best' });
+    const png = icon32.toPNG();
+    const header = Buffer.alloc(6);
+    header.writeUInt16LE(0,0); // reserved
+    header.writeUInt16LE(1,2); // type icon
+    header.writeUInt16LE(1,4); // count
+    const dir = Buffer.alloc(16);
+    dir.writeUInt8(32,0); // width
+    dir.writeUInt8(32,1); // height
+    dir.writeUInt8(0,2);  // colors
+    dir.writeUInt8(0,3);  // reserved
+    dir.writeUInt16LE(1,4); // planes
+    dir.writeUInt16LE(32,6); // bitcount
+    dir.writeUInt32LE(png.length,8);
+    dir.writeUInt32LE(6+16,12);
+    const out = Buffer.concat([header, dir, png]);
+    fs.writeFileSync(icoPath, out);
+  } catch {}
+}
+
+// Generate a tray.png raster fallback from the shield SVG if missing
+function ensureTrayPng(){
+  try {
+    const pngPath = path.join(__dirname, 'assets', 'tray.png');
+    if (fs.existsSync(pngPath)) return;
+    const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+    const imgSvg = tryCreateImageFromSvg(svgPath);
+    if (!imgSvg || imgSvg.isEmpty()) return;
+    const icon24 = imgSvg.resize({ width: 24, height: 24, quality: 'best' });
+    const buf = icon24.toPNG();
+    fs.writeFileSync(pngPath, Buffer.from(buf));
+  } catch {}
+}
 // Debug helper: backscan any files that still have no zone recorded
 async function forceBackscanMissingZones(){
   ensureSettings();
@@ -1373,9 +1414,11 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
 });
 app.whenReady().then(() => {
   try { ensureShieldIco(); } catch {}
+  try { ensureTrayPng(); } catch {}
   const trayImg = getTrayIconImage();
   tray = new Tray(trayImg);
-  try { tray.on('click', () => { openSettingsWindow(); }); } catch {}
+  // Left and right click both show the menu; left avoids accidental window popups
+  try { tray.on('click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   try { tray.on('right-click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   rebuildTray();
   startScanning();
