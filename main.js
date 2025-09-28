@@ -1013,6 +1013,7 @@ function buildMenu(){
   const scanSub = { label: 'Scan interval', submenu: scanChoices.map(sec => ({ label: `${sec}s${(state.settings.scanIntervalSec===sec) ? ' ✓':''}`, click: () => { state.settings.scanIntervalSec = sec; saveSettings(); restartScanning(); rebuildTray(); } })) };
   return Menu.buildFromTemplate([
     buildPushInventorySubmenu(),
+    { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
     { type: 'separator' },
     { label: 'Docs (Sheets deploy)', click: openDocsWindow },
@@ -1060,6 +1061,12 @@ function openDocsWindow(){
   const win = new BrowserWindow({ width: 900, height: 740, resizable: true });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'docs', 'deploy-sheets.html'));
+}
+function openCovWindow(){
+  const win = new BrowserWindow({ width: 900, height: 740, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  win.setMenu(null);
+  win.loadFile(path.join(__dirname, 'cov-list.html'));
+  makeHidable(win);
 }
 
 // Debug helper: backscan any files that still have no zone recorded
