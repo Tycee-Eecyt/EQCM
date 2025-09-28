@@ -102,7 +102,11 @@ const DEFAULT_SETTINGS = {
 
   // Consideration heuristics
   invisMaxMinutes: 20,          // treat self-invis as potentially active up to this long
-  combatRecentMinutes: 5        // treat combat as "recent" for this many minutes
+  combatRecentMinutes: 5,       // treat combat as "recent" for this many minutes
+
+  // Raider kit customization (UI in Raid Kit window)
+  raidKitItems: [],             // custom additions [{ name, mode: 'present'|'count', pattern? }]
+  raidKitHidden: []             // names of defaults to hide
 };
 
 let state = {
@@ -379,6 +383,50 @@ function buildCovSet(){
   } catch(e){ log('buildCovSet error', e.message); return new Set(); }
 }
 function getCovSet(){ return buildCovSet(); }
+
+// ---------- Raider Kit (defaults + user) ----------
+const DEFAULT_RAID_KIT = [
+  { name: 'Vial of Velium Vapors', mode: 'present', pattern: '^Vial of Velium Vapors$' },
+  { name: 'Velium Vial',           mode: 'count',   pattern: '^Velium Vial$' },
+  { name: 'Leatherfoot Raider Skullcap', mode: 'present', pattern: '^Leatherfoot Raider Skullcap$' },
+  { name: 'Shiny Brass Idol',      mode: 'present', pattern: '^Shiny Brass Idol$' },
+  { name: 'Ring of Shadows',       mode: 'count',   pattern: '^Ring of Shadows$' },
+  { name: 'Reaper of the Dead',    mode: 'present', pattern: '^Reaper of the Dead$' },
+  { name: 'Pearl',                 mode: 'count',   pattern: '^Pearl$' },
+  { name: 'Peridot',               mode: 'count',   pattern: '^Peridot$' },
+  { name: 'Mana Battery - Class Five', mode: 'count', pattern: '^Mana Battery - Class Five$' },
+  { name: 'Mana Battery - Class Four', mode: 'count', pattern: '^Mana Battery - Class Four$' },
+  { name: 'Mana Battery - Class Three', mode: 'count', pattern: '^Mana Battery - Class Three$' },
+  { name: 'Mana Battery - Class Two', mode: 'count', pattern: '^Mana Battery - Class Two$' },
+  { name: 'Mana Battery - Class One', mode: 'count', pattern: '^Mana Battery - Class One$' },
+  { name: "Larrikan's Mask",      mode: 'present', pattern: "^Larrikan'?s Mask$" }
+];
+function getMergedRaidKit(){
+  ensureSettings();
+  const hidden = new Set((state.settings.raidKitHidden||[]).map(String));
+  const merged = [];
+  for (const d of DEFAULT_RAID_KIT){ if (!hidden.has(d.name)) merged.push(Object.assign({}, d)); }
+  for (const u of (state.settings.raidKitItems||[])){
+    if (!u || !u.name) continue;
+    merged.push({ name: String(u.name), mode: (u.mode==='count'?'count':'present'), pattern: String(u.pattern||('^'+u.name+'$')) });
+  }
+  return merged;
+}
+function countRaidKitForCharacter(character){
+  const inv = (state.inventory||{})[character];
+  const items = (inv && inv.items) ? inv.items : [];
+  const kit = getMergedRaidKit();
+  const out = [];
+  for (const k of kit){
+    const re = new RegExp(k.pattern||('^'+k.name+'$'), 'i');
+    let count=0, present=false;
+    for (const it of (items||[])){
+      if (re.test(String(it.Name||''))){ present=true; count += Number(it.Count||0); }
+    }
+    out.push({ name: k.name, mode: k.mode, present, count });
+  }
+  return out;
+}
 
 // ---------- regexes ----------
 const RE_ZONE = /^\[(?<ts>[^\]]+)\]\s+You have entered (?<zone>.+?)\./i;
@@ -1267,6 +1315,27 @@ ipcMain.handle('settings:set', async (evt, payload) => {
   state.settings = Object.assign({}, state.settings, payload || {});
   saveSettings(); rebuildTray();
   return { ok: true };
+});
+ipcMain.handle('raidkit:get', async () => {
+  try{
+    ensureSettings();
+    return { defaults: DEFAULT_RAID_KIT, custom: state.settings.raidKitItems||[], hidden: state.settings.raidKitHidden||[], merged: getMergedRaidKit() };
+  } catch(e){ return { defaults: [], custom: [], hidden: [], merged: [], error: String(e&&e.message||e) }; }
+});
+ipcMain.handle('raidkit:set', async (evt, payload) => {
+  try{
+    ensureSettings();
+    const items = Array.isArray(payload && payload.items) ? payload.items : (state.settings.raidKitItems||[]);
+    const hidden = Array.isArray(payload && payload.hidden) ? payload.hidden : (state.settings.raidKitHidden||[]);
+    state.settings.raidKitItems = items;
+    state.settings.raidKitHidden = hidden;
+    saveSettings();
+    return { ok: true };
+  } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+});
+ipcMain.handle('raidkit:counts', async (evt, character) => {
+  try{ return { ok:true, character, rows: countRaidKitForCharacter(String(character||'')) }; }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('cov:getLists', async () => {
   try{
