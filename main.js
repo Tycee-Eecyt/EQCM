@@ -391,6 +391,11 @@ const RE_SNEAK     = /(You are as quiet as a cat stalking it's prey|You are as q
 const RE_ATTACK    = /^.*\]\s+You\s+(?:slash|pierce|bash|crush|kick|hit|smash|backstab|strike)\b/i;
 const RE_ATTACK_NAMED_HIT  = /^\[(?<ts>[^\]]+)\]\s+You\s+(?:slash|pierce|bash|crush|kick|hit|smash|backstab|strike)\s+(?<mob>.+?)\s+for\s+\d+\s+points of damage\./i;
 const RE_ATTACK_NAMED_MISS = /^\[(?<ts>[^\]]+)\]\s+You\s+try to\s+(?:slash|pierce|punch|bash|crush|kick|hit|smash|backstab|strike)\s+(?<mob>.+?),\s+but\s+miss!$/i;
+const RE_AUTO_ATTACK_ON = /^\[(?<ts>[^\]]+)\]\s+Auto attack on\./i;
+const RE_MOB_HIT_YOU    = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+(?:hits|kicks|bashes)\s+YOU\b/i;
+const RE_MOB_TRY_HIT_YOU= /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+tries to\s+(?:hit|bash)\s+YOU\b/i;
+const RE_MOB_NON_MELEE  = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+was hit by non-melee\b/i;
+const RE_MOB_THORNS     = /^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+was pierced by thorns\b/i;
 
 // ---------- faction rules ----------
 const STANDINGS = [
@@ -782,9 +787,14 @@ async function scanLogs(){
           continue;
         }
 
-        // Track named attacks to mark recent combat per mob
+        // Track combat: named player attacks, auto-attack on (snapshot), mob hits you, thorns/non-melee damage
         let mAH = line.match(RE_ATTACK_NAMED_HIT);
         let mAM = mAH ? null : line.match(RE_ATTACK_NAMED_MISS);
+        const mAA = mAH || mAM ? null : line.match(RE_AUTO_ATTACK_ON);
+        const mHY = (!mAH && !mAM && !mAA) ? line.match(RE_MOB_HIT_YOU) : null;
+        const mTY = (!mAH && !mAM && !mAA && !mHY) ? line.match(RE_MOB_TRY_HIT_YOU) : null;
+        const mNM = (!mAH && !mAM && !mAA && !mHY && !mTY) ? line.match(RE_MOB_NON_MELEE) : null;
+        const mTH = (!mAH && !mAM && !mAA && !mHY && !mTY && !mNM) ? line.match(RE_MOB_THORNS) : null;
         if (mAH || mAM){
           const ts = (mAH||mAM).groups.ts;
           const mob = (mAH||mAM).groups.mob;
@@ -793,6 +803,21 @@ async function scanLogs(){
           if (state.covFaction[char]) nowState.prevBeforeCombat = Object.assign({}, state.covFaction[char]);
           nowState.lastCombat = t.when.getTime();
           const key = normalizeMobName(mob);
+          if (!nowState.attacks) nowState.attacks = {};
+          nowState.attacks[key] = t.when.getTime();
+          continue;
+        }
+        if (mAA){
+          const ts = mAA.groups.ts; const t = parseEqTimestamp(ts);
+          if (state.covFaction[char]) nowState.prevBeforeCombat = Object.assign({}, state.covFaction[char]);
+          nowState.lastCombat = t.when.getTime();
+          continue;
+        }
+        if (mHY || mTY || mNM || mTH){
+          const g = (mHY||mTY||mNM||mTH).groups;
+          const t = parseEqTimestamp(g.ts);
+          nowState.lastCombat = t.when.getTime();
+          const key = normalizeMobName(g.mob);
           if (!nowState.attacks) nowState.attacks = {};
           nowState.attacks[key] = t.when.getTime();
           continue;
