@@ -1409,6 +1409,19 @@ ipcMain.handle('raidkit:set', async (evt, payload) => {
     return { ok: true };
   } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
+ipcMain.handle('raidkit:saveAndPush', async (evt, payload) => {
+  try{
+    ensureSettings();
+    const items = Array.isArray(payload && payload.items) ? payload.items : (state.settings.raidKitItems||[]);
+    const hidden = Array.isArray(payload && payload.hidden) ? payload.hidden : (state.settings.raidKitHidden||[]);
+    state.settings.raidKitItems = items;
+    state.settings.raidKitHidden = hidden;
+    saveSettings();
+    // Trigger push in background without blocking the UI
+    setImmediate(() => { sendReplaceAllWebhook().catch(() => {}); });
+    return { ok: true };
+  } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+});
 ipcMain.handle('raidkit:counts', async (evt, character) => {
   try{ return { ok:true, character, rows: countRaidKitForCharacter(String(character||'')) }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }

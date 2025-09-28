@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('EQCM', {
   replaceAll: () => ipcRenderer.invoke('advanced:replaceAll'),
   getRaidKit: () => ipcRenderer.invoke('raidkit:get'),
   setRaidKit: (payload) => ipcRenderer.invoke('raidkit:set', payload),
+  saveRaidKitAndPush: (payload) => ipcRenderer.invoke('raidkit:saveAndPush', payload),
   getRaidKitCounts: (character) => ipcRenderer.invoke('raidkit:counts', character)
 });
 

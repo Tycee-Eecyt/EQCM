@@ -51,8 +51,8 @@
     async function saveEdit(idx, oldName){ const inp=document.getElementById('edit-name-'+idx); const newName=(inp&&inp.value?String(inp.value).trim():''); const modeSel=document.getElementById('edit-mode-'+idx); const mode=(modeSel&&modeSel.value)||'present'; window._editingIdx=-1; window._editingName=''; if(!newName||newName===oldName){ render(); return; } const customIdx=(kit.custom||[]).findIndex(x=>x.name===oldName); if(customIdx>=0){ kit.custom[customIdx].name=newName; kit.custom[customIdx].mode=(mode==='count'?'count':'present'); if(!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern='^'+escapeRe(newName)+'$'; } else { kit.hidden=Array.from(new Set([...(kit.hidden||[]), oldName])); const pattern='^'+escapeRe(newName)+'$'; kit.custom=Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name:newName, mode:(mode==='count'?'count':'present'), pattern }) ])).map(s=>JSON.parse(s)); } await persist(); }
     async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(); }
     async function saveAndClose(){
-      await persist();
-      try { await window.EQCM.replaceAll(); } catch (e) { /* ignore push errors in UI */ }
+      // Save instantly and trigger background push without blocking the UI
+      try { await window.EQCM.saveRaidKitAndPush({ items: kit.custom, hidden: kit.hidden }); } catch(e) {}
       window.close();
     }
     async function persist(){ await window.EQCM.setRaidKit({ items: kit.custom, hidden: kit.hidden }); kit = await window.EQCM.getRaidKit(); render(); setStatus('Saved'); }
