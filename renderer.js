@@ -8,9 +8,11 @@ contextBridge.exposeInMainWorld('EQCM', {
   openExternal: (url) => shell.openExternal(url),
   getCovLists: () => ipcRenderer.invoke('cov:getLists'),
   forceBackscan: () => ipcRenderer.invoke('advanced:forceBackscan'),
-  replaceAll: () => ipcRenderer.invoke('advanced:replaceAll'),
+  replaceAll: (opts) => ipcRenderer.invoke('advanced:replaceAll', opts||{}),
+  replaceAllForce: () => ipcRenderer.invoke('advanced:replaceAll', { force: true }),
   getRaidKit: () => ipcRenderer.invoke('raidkit:get'),
   setRaidKit: (payload) => ipcRenderer.invoke('raidkit:set', payload),
+  saveRaidKitAndPush: (payload) => ipcRenderer.invoke('raidkit:saveAndPush', payload),
   getRaidKitCounts: (character) => ipcRenderer.invoke('raidkit:counts', character)
 });
 

@@ -5,192 +5,126 @@
   <title>EQ Character Manager — Raid Kit</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 16px; }
-    label { display:block; margin-top:10px; font-weight:600; }
-    input[type="text"], select { width: 100%; padding: 8px; }
+    input[type="text"], select { padding: 8px; }
     button { padding: 8px 12px; }
     .row { display:flex; gap:8px; align-items:center; }
-    .list { border:1px solid #ddd; max-height:240px; overflow:auto; padding:8px; }
-    .item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; }
+    .list { border:1px solid #ddd; max-height:360px; overflow:auto; padding:8px; }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid #f1f1f1; }
     .small { font-size: 12px; color:#555; }
   </style>
-</head>
-<body>
-  <h2>Raid Kit</h2>
-  <p class="small">Add items to track and choose whether to count how many or just presence. Example: add "Potion of Stinging Wort" and enable "Count".</p>
-
-  <div class="row" style="margin:8px 0">
-    <input id="filter" type="text" placeholder="Filter items (type to search)"/>
-    <button onclick="clearFilter()">Clear</button>
-    <label class="small" style="margin-left:auto"><input type="checkbox" id="sortAZ" checked/> Sort A–Z</label>
-  </div>
-
-  <h3>Items</h3>
-  <div class="row">
-    <input id="newName" type="text" placeholder="Item name (e.g., Potion of Stinging Wort)"/>
-    <label style="margin:0"><input type="checkbox" id="newCount"/> Count</label>
-    <button onclick="addItem()">Add</button>
-  </div>
-  <div id="kitList" class="list" style="margin-top:8px"></div>
-
-  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
-    <button onclick="saveAndClose()">Save & Close</button>
-    <button onclick="resetCustom()">Reset Custom Items</button>
-    <button onclick="exportMerged('json')">Export Merged (JSON)</button>
-    <button onclick="exportMerged('text')">Export Merged (Text)</button>
-    <span id="status" class="small" style="color:#555"></span>
-  </div>
-
-  <hr style="margin:12px 0"/>
-  <div class="small" style="margin-bottom:6px">Quick add (one per line). Append ":count" to track counts.</div>
-  <textarea id="bulk" rows="5" style="width:100%" placeholder="Potion of Stinging Wort:count&#10;Pegasus Feather Cloak"></textarea>
-  <div class="row" style="margin-top:6px">
-    <button onclick="addBulk()">Add Lines</button>
-    <button onclick="importJson()">Import JSON</button>
-  </div>
-
-  <hr style="margin:12px 0"/>
-  <div class="small" style="margin-bottom:6px">Hidden defaults</div>
-  <div id="hiddenList" class="list"></div>
-
   <script>
     let kit = { defaults: [], custom: [], hidden: [], merged: [] };
-    let filterQuery = '';
-    let debounceTimer = null;
     function setStatus(msg){ const el = document.getElementById('status'); if (el){ el.textContent = msg||''; if (msg){ setTimeout(()=>{ el.textContent=''; }, 1200); } } }
-
-    async function load(){
-      const res = await window.EQCM.getRaidKit();
-      kit = res || { defaults: [], custom: [], hidden: [], merged: [] };
-      render();
-    }
-    function sortedMerged(){
-      const arr = (kit.merged||[]).slice();
-      const sortOn = document.getElementById('sortAZ');
-      if (sortOn && sortOn.checked) arr.sort((a,b)=>a.name.localeCompare(b.name));
-      return filterQuery ? arr.filter(it => it.name.toLowerCase().includes(filterQuery)) : arr;
+    async function load(){ const res = await window.EQCM.getRaidKit(); kit = res || { defaults: [], custom: [], hidden: [], merged: [] }; render(); }
+    function normalizeCustom(list){
+      const arr = Array.isArray(list)? list : [];
+      return arr.map(o => ({ name: String(o.name||''), mode: (o.mode==='count'?'count':'present'), pattern: o.pattern||('^'+escapeRe(String(o.name||''))+'$') }))
+               .filter(o => !!o.name);
     }
     function render(){
-      const box = document.getElementById('kitList');
-      box.innerHTML = '';
-      const merged = sortedMerged();
+      const box = document.getElementById('kitList'); box.innerHTML = '';
+      const mergedBase = Array.isArray(kit.merged) ? kit.merged.slice() : [];
+      const customNorm = normalizeCustom(kit.custom);
+      const byName = new Set(mergedBase.map(it => String(it.name)));
+      const merged = mergedBase.concat(customNorm.filter(it => !byName.has(String(it.name))));
+      merged.sort((a,b)=>a.name.localeCompare(b.name));
       merged.forEach((it, idx) => {
         const row = document.createElement('div'); row.className='item';
         const left = document.createElement('div');
         const isEditing = (window._editingIdx === idx);
         if (isEditing){
-          const inp = document.createElement('input'); inp.type='text'; inp.id = 'edit-'+idx; inp.value = (window._editingVal != null ? window._editingVal : it.name); inp.style.minWidth='260px';
-          inp.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ saveEdit(idx, it.name, it.mode); } else if (e.key === 'Escape'){ cancelEdit(); } });
-          left.appendChild(inp);
+          const nameInp = document.createElement('input'); nameInp.type='text'; nameInp.id='edit-name-'+idx; nameInp.value=(window._editingName!=null?window._editingName:it.name); nameInp.style.minWidth='260px'; left.appendChild(nameInp);
+          const modeSel = document.createElement('select'); modeSel.id='edit-mode-'+idx; ['present','count'].forEach(m=>{ const opt=document.createElement('option'); opt.value=m; opt.textContent=m.charAt(0).toUpperCase()+m.slice(1); if (it.mode===m) opt.selected=true; modeSel.appendChild(opt); }); left.appendChild(modeSel);
         } else {
           const name = document.createElement('div'); name.textContent = it.name; left.appendChild(name);
           const small = document.createElement('div'); small.className='small'; small.textContent = it.mode==='count' ? 'Count' : 'Present'; left.appendChild(small);
         }
         row.appendChild(left);
         const right = document.createElement('div'); right.className='row';
-        const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = (it.mode==='count'); chk.title='Count';
-        chk.onchange = async () => { setItemMode(it.name, chk.checked?'count':'present'); };
-        right.appendChild(chk);
-        // counts removed from this simplified UI
         if (isEditing){
-          const btnSave = document.createElement('button'); btnSave.textContent = 'Save'; btnSave.onclick = async () => { await saveEdit(idx, it.name, it.mode); }; right.appendChild(btnSave);
-          const btnCancel = document.createElement('button'); btnCancel.textContent = 'Cancel'; btnCancel.onclick = () => { cancelEdit(); }; right.appendChild(btnCancel);
+          const btnSave = document.createElement('button'); btnSave.textContent='Save'; btnSave.onclick=async()=>{ await saveEdit(idx, it.name); }; right.appendChild(btnSave);
+          const btnCancel = document.createElement('button'); btnCancel.textContent='Cancel'; btnCancel.onclick=()=>{ cancelEdit(); }; right.appendChild(btnCancel);
         } else {
-          const btnEdit = document.createElement('button'); btnEdit.textContent = 'Edit'; btnEdit.onclick = () => { editItem(idx, it.name); }; right.appendChild(btnEdit);
+          const btnEdit = document.createElement('button'); btnEdit.textContent='Edit'; btnEdit.onclick=()=>editItem(idx, it.name); right.appendChild(btnEdit);
+          const btnDel = document.createElement('button'); btnDel.textContent='Remove'; btnDel.onclick=async()=>{ await removeItem(it.name); }; right.appendChild(btnDel);
         }
-        const btnHide = document.createElement('button'); btnHide.textContent = 'Remove'; btnHide.onclick = async () => { removeItem(it.name); }; right.appendChild(btnHide);
         row.appendChild(right);
         box.appendChild(row);
       });
-      // Hidden defaults
-      const h = document.getElementById('hiddenList'); if (h){
-        h.innerHTML = '';
-        const hidden = (kit.hidden||[]).slice().sort((a,b)=>a.localeCompare(b));
-        if (!hidden.length){ h.innerHTML = '<div class="small" style="color:#777">None</div>'; }
-        hidden.forEach(name => {
-          const row = document.createElement('div'); row.className='item';
-          const left = document.createElement('div'); left.textContent = name; row.appendChild(left);
-          const btn = document.createElement('button'); btn.textContent = 'Unhide'; btn.onclick = async () => { await unhideDefault(name); }; row.appendChild(btn);
-          h.appendChild(row);
-        });
-      }
     }
-    function clearFilter(){ document.getElementById('filter').value=''; filterQuery=''; render(); }
-    document.addEventListener('input', (e) => { if (e.target && e.target.id==='filter'){ filterQuery = (e.target.value||'').trim().toLowerCase(); clearTimeout(debounceTimer); debounceTimer = setTimeout(render, 120); } });
-    document.addEventListener('change', (e)=>{ if (e.target && e.target.id==='sortAZ') render(); });
-    async function setItemMode(name, mode){
-      // change in custom if exists; else add override
-      const idx = (kit.custom||[]).findIndex(i => i.name===name);
-      if (idx>=0) kit.custom[idx].mode = mode; else kit.custom.push({ name, mode });
-      await persist();
-    }
-    async function removeItem(name){
-      // If in custom, delete; else hide default
-      const i = (kit.custom||[]).findIndex(x => x.name===name);
-      if (i>=0) kit.custom.splice(i,1); else kit.hidden = Array.from(new Set([...(kit.hidden||[]), name]));
-      await persist();
-    }
+    async function removeItem(name){ const i=(kit.custom||[]).findIndex(x=>String(x.name)===String(name)); if(i>=0) kit.custom.splice(i,1); else kit.hidden=Array.from(new Set([...(kit.hidden||[]), name])); await persist(); }
     async function addItem(){
-      const name = (document.getElementById('newName').value||'').trim();
-      const count = document.getElementById('newCount').checked;
-      if (!name) return;
-      document.getElementById('newName').value=''; document.getElementById('newCount').checked=false;
-      kit.custom = Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name, mode: count?'count':'present' }) ])).map(s => JSON.parse(s));
+      const name=(document.getElementById('newName').value||'').trim();
+      const mode=(document.getElementById('newMode').value||'present');
+      if(!name) return;
+      document.getElementById('newName').value=''; document.getElementById('newMode').value='present';
+      const idx=(kit.custom||[]).findIndex(x=>String(x.name)===name);
+      const pattern='^'+escapeRe(name)+'$';
+      if(idx>=0){ kit.custom[idx].mode=(mode==='count'?'count':'present'); if(!kit.custom[idx].pattern) kit.custom[idx].pattern=pattern; }
+      else { kit.custom=(kit.custom||[]).concat([{ name, mode:(mode==='count'?'count':'present'), pattern }]); }
       await persist();
     }
-    async function addBulk(){
-      const raw = String(document.getElementById('bulk').value||''); if (!raw.trim()) return;
-      raw.split(/\r?\n/).forEach(line => {
-        const m = String(line||'').trim().match(/^(.*?)(?::\s*(count))?$/i);
-        if (!m) return; const nm = (m[1]||'').trim(); const isCount = !!m[2];
-        if (!nm) return; kit.custom = Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name:nm, mode: isCount?'count':'present' }) ])).map(s=>JSON.parse(s));
-      });
-      document.getElementById('bulk').value=''; await persist();
-    }
-    async function importJson(){
-      const text = prompt('Paste JSON array: [{"name":"Item","mode":"count|present"}]'); if (!text) return;
-      try{
-        const arr = JSON.parse(text); if (!Array.isArray(arr)) throw new Error('Not an array');
-        arr.forEach(o => { if (!o || !o.name) return; const mode = (o.mode==='count')?'count':'present'; kit.custom = Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name:o.name, mode }) ])).map(s=>JSON.parse(s)); });
-        await persist();
-      }catch(e){ alert('Invalid JSON: ' + (e && e.message || e)); }
-    }
-    async function unhideDefault(name){ kit.hidden = (kit.hidden||[]).filter(n => n!==name); await persist(); }
-    function editItem(idx, oldName){ window._editingIdx = idx; window._editingVal = oldName; render(); }
-    function cancelEdit(){ window._editingIdx = -1; window._editingVal = ''; render(); }
+    function editItem(idx, oldName){ window._editingIdx=idx; window._editingName=oldName; render(); }
+    function cancelEdit(){ window._editingIdx=-1; window._editingName=''; render(); }
     function escapeRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-    async function saveEdit(idx, oldName, mode){
-      const inp = document.getElementById('edit-'+idx);
-      const newName = (inp && inp.value ? String(inp.value).trim() : '');
-      window._editingIdx = -1; window._editingVal = '';
-      if (!newName || newName === oldName) { render(); return; }
-      const customIdx = (kit.custom||[]).findIndex(x => x.name===oldName);
-      if (customIdx >= 0){
-        kit.custom[customIdx].name = newName;
-        if (!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern = '^' + escapeRe(newName) + '$';
+    async function saveEdit(idx, oldName){
+      const inp=document.getElementById('edit-name-'+idx);
+      const newName=(inp&&inp.value?String(inp.value).trim():'');
+      const modeSel=document.getElementById('edit-mode-'+idx);
+      const mode=(modeSel&&modeSel.value)||'present';
+      window._editingIdx=-1; window._editingName='';
+      if(!newName||newName===oldName){ render(); return; }
+      const customIdx=(kit.custom||[]).findIndex(x=>String(x.name)===String(oldName));
+      if(customIdx>=0){
+        kit.custom[customIdx].name=newName;
+        kit.custom[customIdx].mode=(mode==='count'?'count':'present');
+        if(!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern='^'+escapeRe(newName)+'$';
       } else {
-        kit.hidden = Array.from(new Set([...(kit.hidden||[]), oldName]));
-        const pattern = '^' + escapeRe(newName) + '$';
-        kit.custom = Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name: newName, mode: mode==='count'?'count':'present', pattern }) ])).map(s => JSON.parse(s));
+        kit.hidden=Array.from(new Set([...(kit.hidden||[]), oldName]));
+        const pattern='^'+escapeRe(newName)+'$';
+        kit.custom=(kit.custom||[]).concat([{ name:newName, mode:(mode==='count'?'count':'present'), pattern }]);
       }
       await persist();
     }
-    async function resetCustom(){ kit.custom = []; kit.hidden = []; await persist(); }
-    async function saveAndClose(){ await persist(); window.close(); }
-    async function exportMerged(fmt){
+    async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(false); }
+    async function saveAndClose(){
+      // Save instantly and trigger background push without blocking the UI
+      try { await window.EQCM.saveRaidKitAndPush({ items: kit.custom, hidden: kit.hidden }); } catch(e) {}
+      // Close immediately
+      window.close();
+    }
+    async function persist(showStatus=true){
       try{
-        const merged = sortedMerged();
-        const payload = (fmt==='json') ? JSON.stringify(merged, null, 2) : merged.map(it => `${it.name} [${it.mode}]`).join('\n');
-        await navigator.clipboard.writeText(payload);
-        setStatus('Copied');
-      } catch(e){ alert('Copy failed: ' + (e && e.message || e)); }
+        const payload = { items: normalizeCustom(kit.custom), hidden: kit.hidden||[] };
+        await window.EQCM.setRaidKit(payload);
+        kit = await window.EQCM.getRaidKit();
+        render();
+        if (showStatus) setStatus('Saved');
+      }catch(e){ alert('Save failed: ' + (e && e.message || e)); }
     }
-    async function persist(){
-      await window.EQCM.setRaidKit({ items: kit.custom, hidden: kit.hidden });
-      kit = await window.EQCM.getRaidKit();
-      render();
-      setStatus('Saved');
-    }
-    load();
+    window.addEventListener('DOMContentLoaded', ()=>{ load(); });
   </script>
+</head>
+<body>
+  <h2>Raid Kit</h2>
+  <div class="row" style="justify-content:flex-end; gap:8px; margin-bottom:8px">
+    <button onclick="saveAndClose()">Save & Close</button>
+    <button onclick="resetCustom()">Reset to Default Raid Kit</button>
+  </div>
+  <p class="small">Simple CRUD: add, edit, or remove items from your raid kit. Removing a default item hides it; removing a custom item deletes it.</p>
+  <h3>Add Item</h3>
+  <div class="row" style="margin-bottom:8px">
+    <input id="newName" type="text" placeholder="Item name (e.g., 10 Dose Potion of Stinging Wort)"/>
+    <select id="newMode">
+      <option value="present">Present</option>
+      <option value="count">Count</option>
+    </select>
+    <button onclick="addItem()">Add</button>
+  </div>
+  <h3>Items</h3>
+  <div class="list" id="kitList"></div>
+  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
+    <span id="status" class="small" style="color:#555"></span>
+  </div>
 </body>
 </html>

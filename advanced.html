@@ -28,6 +28,7 @@
     <button onclick="saveAndClose()">Save & Close</button>
     <button onclick="forceBackscan()">Force backscan (missing zones)</button>
     <button onclick="replaceAll()">Full refresh to sheet</button>
+    <button onclick="forceReplaceAll()" title="Bypass change detection and push all tabs now">Force Replace All</button>
   </div>
 
   <script>
@@ -51,11 +52,15 @@
     }
     async function replaceAll(){
       if (!confirm('Replace all rows in Google Sheet? This will clear and rewrite Zone Tracker, CoV Faction, Inventory Summary, and Inventory Items.')) return;
-      const res = await window.EQCM.replaceAll();
+      const res = await window.EQCM.replaceAll({});
       if (!res || res.ok !== true) alert('Replace all error: ' + (res && res.error || 'unknown'));
+    }
+    async function forceReplaceAll(){
+      if (!confirm('Force Replace All? This ignores change detection and pushes all tabs now.')) return;
+      const res = await window.EQCM.replaceAllForce();
+      if (!res || res.ok !== true) alert('Force Replace All error: ' + (res && res.error || 'unknown'));
     }
     load();
   </script>
 </body>
 </html>
-

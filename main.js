@@ -51,6 +51,7 @@ function filterRowsByFavorites(rows){
 const os = require('os');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
@@ -385,47 +386,14 @@ function buildCovSet(){
 function getCovSet(){ return buildCovSet(); }
 
 // ---------- Raider Kit (defaults + user) ----------
-const DEFAULT_RAID_KIT = [
-  { name: 'Vial of Velium Vapors', mode: 'present', pattern: '^Vial of Velium Vapors$' },
-  { name: 'Velium Vial',           mode: 'count',   pattern: '^Velium Vial$' },
-  { name: 'Leatherfoot Raider Skullcap', mode: 'present', pattern: '^Leatherfoot Raider Skullcap$' },
-  { name: 'Shiny Brass Idol',      mode: 'present', pattern: '^Shiny Brass Idol$' },
-  { name: 'Ring of Shadows',       mode: 'count',   pattern: '^Ring of Shadows$' },
-  { name: 'Reaper of the Dead',    mode: 'present', pattern: '^Reaper of the Dead$' },
-  { name: 'Pearl',                 mode: 'count',   pattern: '^Pearl$' },
-  { name: 'Peridot',               mode: 'count',   pattern: '^Peridot$' },
-  { name: 'Mana Battery - Class Five', mode: 'count', pattern: '^Mana Battery - Class Five$' },
-  { name: 'Mana Battery - Class Four', mode: 'count', pattern: '^Mana Battery - Class Four$' },
-  { name: 'Mana Battery - Class Three', mode: 'count', pattern: '^Mana Battery - Class Three$' },
-  { name: 'Mana Battery - Class Two', mode: 'count', pattern: '^Mana Battery - Class Two$' },
-  { name: 'Mana Battery - Class One', mode: 'count', pattern: '^Mana Battery - Class One$' },
-  { name: "Larrikan's Mask",      mode: 'present', pattern: "^Larrikan'?s Mask$" }
-];
-function getMergedRaidKit(){
-  ensureSettings();
-  const hidden = new Set((state.settings.raidKitHidden||[]).map(String));
-  const merged = [];
-  for (const d of DEFAULT_RAID_KIT){ if (!hidden.has(d.name)) merged.push(Object.assign({}, d)); }
-  for (const u of (state.settings.raidKitItems||[])){
-    if (!u || !u.name) continue;
-    merged.push({ name: String(u.name), mode: (u.mode==='count'?'count':'present'), pattern: String(u.pattern||('^'+u.name+'$')) });
-  }
-  return merged;
-}
+const RK = require('./src/raidkit-core');
+const DEFAULT_RAID_KIT = RK.DEFAULT_RAID_KIT;
+const FIXED_RK_NAMES = RK.FIXED_RK_NAMES;
+function getMergedRaidKit(){ ensureSettings(); return RK.getMergedRaidKit(state.settings); }
 function countRaidKitForCharacter(character){
   const inv = (state.inventory||{})[character];
   const items = (inv && inv.items) ? inv.items : [];
-  const kit = getMergedRaidKit();
-  const out = [];
-  for (const k of kit){
-    const re = new RegExp(k.pattern||('^'+k.name+'$'), 'i');
-    let count=0, present=false;
-    for (const it of (items||[])){
-      if (re.test(String(it.Name||''))){ present=true; count += Number(it.Count||0); }
-    }
-    out.push({ name: k.name, mode: k.mode, present, count });
-  }
-  return out;
+  return RK.countRaidKitForInventory(state.settings, items);
 }
 
 // ---------- regexes ----------
@@ -477,14 +445,20 @@ function parseEqTimestamp(tsStr){
 
 // ---------- CSV ----------
 function writeCsv(filePath, header, rows){
+  // Returns true if file content changed
   try{
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const lines = [header.join(','), ...rows.map(r => r.map(v => {
       const s = String(v ?? '');
       return /[",\n]/.test(s) ? ('"' + s.replace(/"/g,'""') + '"') : s;
     }).join(','))];
-    fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
-  }catch(e){ log('writeCsv error', filePath, e.message); }
+    const next = lines.join('\n');
+    let prev = '';
+    try { if (fs.existsSync(filePath)) prev = fs.readFileSync(filePath, 'utf8'); } catch {}
+    if (prev === next) return false;
+    fs.writeFileSync(filePath, next, 'utf8');
+    return true;
+  }catch(e){ log('writeCsv error', filePath, e.message); return false; }
 }
 
 // ---------- Webhook helpers ----------
@@ -560,35 +534,31 @@ function isLikelyAppsScriptExec(url){
 }
 
 function getRaidKitSummary(items){
-  const list = Array.isArray(items) ? items : [];
-  const count = (namePattern) => {
-    const re = new RegExp(namePattern, 'i');
-    let n = 0;
-    for (const it of list) {
-      if (re.test(it.Name || '')) n += Number(it.Count || 0) || 0;
-    }
-    return n;
-  };
-  const has = (namePattern) => {
-    const re = new RegExp(namePattern, 'i');
-    return list.some(it => re.test(it.Name || ''));
-  };
-  return {
-    vialVeliumVapors: has('^Vial of Velium Vapors$') ? 'Y' : 'N',
-    veliumVialCount: count('^Velium Vial$'),
-    leatherfootSkullcap: has("^Leatherfoot Raider Skullcap$") ? 'Y' : 'N',
-    shinyBrassIdol: has("^Shiny Brass Idol$") ? 'Y' : 'N',
-    ringOfShadowsCount: count("^Ring of Shadows$"),
-    reaperOfTheDead: has("^Reaper of the Dead$") ? 'Y' : 'N',
-    pearlCount: count("^Pearl$"),
-    peridotCount: count("^Peridot$"),
-    mbClassFive: count("^Mana Battery - Class Five$"),
-    mbClassFour: count("^Mana Battery - Class Four$"),
-    mbClassThree: count("^Mana Battery - Class Three$"),
-    mbClassTwo: count("^Mana Battery - Class Two$"),
-    mbClassOne: count("^Mana Battery - Class One$"),
-    larrikansMask: has("^Larrikan'?s Mask$") ? 'Y' : 'N'
-  };
+  return RK.getRaidKitSummary(items);
+}
+
+// Fixed kit columns (ordered) mapping to summary props
+const FIXED_KIT_COLUMN_DEFS = [
+  { name: 'Vial of Velium Vapors', header: 'Vial of Velium Vapors', prop: 'vialVeliumVapors' },
+  { name: 'Leatherfoot Raider Skullcap', header: 'Leatherfoot Raider Skullcap', prop: 'leatherfootSkullcap' },
+  { name: 'Shiny Brass Idol', header: 'Shiny Brass Idol', prop: 'shinyBrassIdol' },
+  { name: 'Ring of Shadows', header: 'Ring of Shadows Count', prop: 'ringOfShadowsCount' },
+  { name: 'Reaper of the Dead', header: 'Reaper of the Dead', prop: 'reaperOfTheDead' },
+  { name: 'Pearl', header: 'Pearl Count', prop: 'pearlCount' },
+  { name: 'Peridot', header: 'Peridot Count', prop: 'peridotCount' },
+  { name: '10 Dose Potion of Stinging Wort', header: '10 Dose Potion of Stinging Wort Count', prop: 'tenDosePotionOfStingingWortCount' },
+  { name: 'Pegasus Feather Cloak', header: 'Pegasus Feather Cloak', prop: 'pegasusFeatherCloak' },
+  { name: "Larrikan's Mask", header: "Larrikan's Mask", prop: 'larrikansMask' },
+  { name: 'Mana Battery - Class Five', header: 'MB Class Five', prop: 'mbClassFive' },
+  { name: 'Mana Battery - Class Four', header: 'MB Class Four', prop: 'mbClassFour' },
+  { name: 'Mana Battery - Class Three', header: 'MB Class Three', prop: 'mbClassThree' },
+  { name: 'Mana Battery - Class Two', header: 'MB Class Two', prop: 'mbClassTwo' },
+  { name: 'Mana Battery - Class One', header: 'MB Class One', prop: 'mbClassOne' }
+];
+function buildEnabledFixedColumns(){
+  ensureSettings();
+  const hidden = new Set((state.settings.raidKitHidden||[]).map(String));
+  return FIXED_KIT_COLUMN_DEFS.filter(def => !hidden.has(def.name));
 }
 async function maybePostWebhook(){
   ensureSettings();
@@ -624,12 +594,6 @@ async function maybePostWebhook(){
   catch(e){ log('Webhook error', e.message); }
 }
 // Extra raid kit beyond fixed columns
-const FIXED_RK_NAMES = new Set([
-  'Vial of Velium Vapors','Velium Vial','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-  'Ring of Shadows','Reaper of the Dead','Pearl','Peridot',
-  'Mana Battery - Class Five','Mana Battery - Class Four','Mana Battery - Class Three','Mana Battery - Class Two','Mana Battery - Class One',
-  "Larrikan's Mask"
-]);
 function buildRaidKitExtrasForCharacter(character){
   const inv = (state.inventory||{})[character];
   const items = (inv && inv.items) ? inv.items : [];
@@ -643,14 +607,17 @@ function buildRaidKitExtrasForCharacter(character){
       if (re.test(String(it.Name||''))){ present=true; count += Number(it.Count||0); }
     }
     const header = k.mode==='count' ? (k.name + ' Count') : k.name;
-    const value = k.mode==='count' ? (count||0) : (present?'Y':'N');
+    const value = k.mode==='count' ? (count>0 ? count : '') : (present?'Y':'N');
     extras.push({ header, value });
   }
   return extras;
 }
 
 // One-shot replace-all import to Apps Script
-async function sendReplaceAllWebhook(){
+async function sendReplaceAllWebhook(opts){
+  const notify = !!(opts && (opts.notify === true));
+  const forceEnv = String(process.env.FORCE_REPLACE_ALL || '').toLowerCase();
+  const forceFlag = (opts && opts.force === true) || (forceEnv === '1' || forceEnv === 'true' || forceEnv === 'yes');
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) { log('ReplaceAll skipped: remoteSheetsEnabled=false'); return; }
   const url = (state.settings.appsScriptUrl||'').trim();
@@ -669,10 +636,33 @@ async function sendReplaceAllWebhook(){
   });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
-  const payload = { secret, action: 'replaceAll', upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
+  const enabledFixed = buildEnabledFixedColumns();
+  const meta = { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) };
+  const upserts = { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails };
+  const payload = { secret, action: 'replaceAll', meta, upserts };
+
+  // Debounce: compute digest of what would be sent (excluding secret)
+  try{
+    const sortKeys = (v) => {
+      if (!v || typeof v !== 'object') return v;
+      if (Array.isArray(v)) return v.map(sortKeys);
+      const out = {};
+      Object.keys(v).sort().forEach(k => { out[k] = sortKeys(v[k]); });
+      return out;
+    };
+    const digestObj = { action: 'replaceAll', meta, upserts };
+    const json = JSON.stringify(sortKeys(digestObj));
+    const digest = crypto.createHash('sha256').update(json).digest('hex');
+    if (state.lastReplaceAllDigest && state.lastReplaceAllDigest === digest && !forceFlag){
+      log('ReplaceAll skipped: no data changes (digest match)');
+      return;
+    }
+    payload.__digest = digest; // optional for debugging
+  } catch(e){ /* ignore digest errors */ }
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
+    if (res.status >= 200 && res.status < 300 && payload.__digest){ state.lastReplaceAllDigest = payload.__digest; saveState(); }
   }catch(e){
     log('ReplaceAll error', e.message);
   }
@@ -1051,8 +1041,8 @@ async function doScanCycle(){
     await scanLogs();
     await scanInventory();
     saveState();
-    await maybeWriteLocalSheets();
-    await maybePostWebhook();
+    const changed = await maybeWriteLocalSheets();
+    if (changed) await maybePostWebhook();
   } catch(e){
     log('[LOG] Scan cycle error:', e.message);
   }
@@ -1079,18 +1069,19 @@ async function maybeWriteLocalSheets(){
     ? Object.values(state.latestZonesByFile).map(v => [v.character||'', v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||''])
     : Object.entries(state.latestZones || {}).map(([char, v]) => [char, v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||'']);
 const zRowsOut = filterRowsByFavorites(zRows);
-  writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut);
+  let changed = false;
+  changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
   const fHead = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
   const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'').includes('fallback')? 'fallback' : (v.standingDisplay||'').includes('uncertain')? 'uncertain' : '' ]);
 const fRowsOut = filterRowsByFavorites(fRows);
-  writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut);
+  changed = writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut) || changed;
 
-  const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                 'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                 'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count','Larrikan\'s Mask',
-                 'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One',
-                 'Spreadsheet URL','Suggested Sheet Name'];
+  const enabledFixed = buildEnabledFixedColumns();
+  const fixedHeaders = enabledFixed.map(d => d.header);
+  const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)']
+                 .concat(fixedHeaders)
+                 .concat(['Spreadsheet URL','Suggested Sheet Name']);
   // Determine dynamic extra headers from merged raid kit (excluding fixed)
   const extraSet = new Set();
   for (const ch of Object.keys(state.inventory||{})){
@@ -1102,25 +1093,25 @@ const fRowsOut = filterRowsByFavorites(fRows);
 const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const kit = getRaidKitSummary(v.items||[]);
   const suggested = `Inventory - ${char}`;
-  const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
-          kit.vialVeliumVapors, kit.veliumVialCount, kit.leatherfootSkullcap, kit.shinyBrassIdol,
-          kit.ringOfShadowsCount, kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.larrikansMask,
-          kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
-          (state.settings.sheetUrl||''), suggested];
+  const fixedVals = enabledFixed.map(d => kit[d.prop] ?? (d.prop.endsWith('Count') || d.prop.startsWith('mbClass') ? 0 : ''));
+  const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'']
+          .concat(fixedVals)
+          .concat([(state.settings.sheetUrl||''), suggested]);
   const exList = buildRaidKitExtrasForCharacter(char);
   const exMap = {}; exList.forEach(e => exMap[e.header]=e.value);
   const extraVals = extraHeaders.map(h => exMap[h] ?? '');
   return baseRow.concat(extraVals);
 });
 const iRowsOut = filterRowsByFavorites(iRows);
-writeCsv(path.join(dir, 'Raid Kit Summary.csv'), fullHead, iRowsOut);
+changed = writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut) || changed;
 
   // per-character CSV
   for (const [char, inv] of Object.entries(state.inventory || {})){
     const rows = (inv.items||[]).map(it => [char, inv.filePath||'', inv.fileCreated||'', inv.fileModified||'', it.Location||'', it.Name||'', it.ID||'', it.Count||0, it.Slots||0]);
     const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
-    writeCsv(path.join(dir, `Inventory Items - ${char}.csv`), header, rows);
+    changed = writeCsv(path.join(dir, `Inventory Items - ${char}.csv`), header, rows) || changed;
   }
+  return changed;
 }
 
 // ---------- UI ----------
@@ -1353,8 +1344,8 @@ async function forceBackscanMissingZones(){
     }
   }
   saveState();
-  await maybeWriteLocalSheets();
-  await maybePostWebhook();
+  const changed = await maybeWriteLocalSheets();
+  if (changed) await maybePostWebhook();
   log('Force backscan summary', { updated, missing });
 }
 
@@ -1406,6 +1397,19 @@ ipcMain.handle('raidkit:set', async (evt, payload) => {
     return { ok: true };
   } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
+ipcMain.handle('raidkit:saveAndPush', async (evt, payload) => {
+  try{
+    ensureSettings();
+    const items = Array.isArray(payload && payload.items) ? payload.items : (state.settings.raidKitItems||[]);
+    const hidden = Array.isArray(payload && payload.hidden) ? payload.hidden : (state.settings.raidKitHidden||[]);
+    state.settings.raidKitItems = items;
+    state.settings.raidKitHidden = hidden;
+    saveSettings();
+    // Trigger push in background without blocking the UI
+    setImmediate(() => { sendReplaceAllWebhook().catch(() => {}); });
+    return { ok: true };
+  } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+});
 ipcMain.handle('raidkit:counts', async (evt, character) => {
   try{ return { ok:true, character, rows: countRaidKitForCharacter(String(character||'')) }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
@@ -1427,8 +1431,8 @@ ipcMain.handle('advanced:forceBackscan', async () => {
   try { await forceBackscanMissingZones(); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
-ipcMain.handle('advanced:replaceAll', async () => {
-  try { await sendReplaceAllWebhook(); return { ok: true }; }
+ipcMain.handle('advanced:replaceAll', async (_evt, opts) => {
+  try { await sendReplaceAllWebhook(opts||{}); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
