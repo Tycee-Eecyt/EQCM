@@ -20,7 +20,7 @@ if (typeof getLogId !== 'function') {
 }
 
 // EQ Character Manager — v1.6.0 — Author: Tyler A
-const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain } = require('electron');
+const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -1208,17 +1208,46 @@ function tryCreateImageFromSvg(svgPath){
   return null;
 }
 function getTrayIconImage(){
-  const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+  // 1) Prefer size-specific PNGs if present: assets/tray-16.png, tray-24.png, tray-32.png, ...
+  try {
+    const sizes = [16, 20, 24, 32, 48, 64, 128, 256];
+    const available = sizes
+      .map(sz => ({ sz, fp: path.join(__dirname, 'assets', `tray-${sz}.png`) }))
+      .filter(x => fs.existsSync(x.fp));
+    if (available.length) {
+      const sf = (() => { try { return (screen && screen.getPrimaryDisplay && screen.getPrimaryDisplay().scaleFactor) || 1; } catch { return 1; } })();
+      const targetPx = Math.max(16, Math.round(16 * sf));
+      let pick = null;
+      for (const a of available.sort((a,b) => a.sz - b.sz)) {
+        if (!pick) pick = a;
+        if (a.sz >= targetPx) { pick = a; break; }
+      }
+      const img = nativeImage.createFromPath(pick.fp);
+      if (img && !img.isEmpty()) return img;
+    }
+  } catch {}
+
+  // 2) Theme-specific fallbacks if present
+  try {
+    const dark = nativeTheme && nativeTheme.shouldUseDarkColors;
+    const themed = path.join(__dirname, 'assets', dark ? 'tray-light.png' : 'tray-dark.png');
+    if (fs.existsSync(themed)){
+      const img = nativeImage.createFromPath(themed);
+      if (img && !img.isEmpty()) return img;
+    }
+  } catch {}
+
+  // 3) Windows ICO if provided (best multi-size support on Windows)
   const icoPath = path.join(__dirname, 'assets', 'simple-xp-shield.ico');
-  const pngPath = path.join(__dirname, 'assets', 'tray.png');
-  // Prefer ICO on Windows if provided
   if (process.platform === 'win32' && fs.existsSync(icoPath)){
     const ico = nativeImage.createFromPath(icoPath);
     if (ico && !ico.isEmpty()) return ico;
   }
+
+  // 4) Try the shield SVG (or embedded), resized to a sensible tray size
+  const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
   let prefer = tryCreateImageFromSvg(svgPath);
   if (!prefer || prefer.isEmpty()){
-    // Embedded minimal 16x16 shield-like SVG for reliable tray rendering
     const inline = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' ry='3' fill='#2f7ed8'/><path d='M8 2 l5 2 v4 c0 3-3 5-5 6 c-2-1-5-3-5-6 v-4z' fill='#ffffff'/></svg>";
     const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(inline, 'utf8').toString('base64');
     try { prefer = nativeImage.createFromDataURL(dataUrl); } catch { prefer = null; }
@@ -1227,6 +1256,9 @@ function getTrayIconImage(){
     const resized = prefer.resize({ width: 24, height: 24, quality: 'best' });
     if (!resized.isEmpty()) return resized;
   }
+
+  // 5) Final fallback: assets/tray.png if present, otherwise empty image
+  const pngPath = path.join(__dirname, 'assets', 'tray.png');
   let img = nativeImage.createFromPath(pngPath);
   if (!img || img.isEmpty()) img = nativeImage.createEmpty();
   return img;
