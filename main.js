@@ -522,6 +522,30 @@ async function maybePostWebhook(){
   catch(e){ log('Webhook error', e.message); }
 }
 
+// One-shot replace-all import to Apps Script
+async function sendReplaceAllWebhook(){
+  ensureSettings();
+  if (state.settings.remoteSheetsEnabled === false) { log('ReplaceAll skipped: remoteSheetsEnabled=false'); return; }
+  const url = (state.settings.appsScriptUrl||'').trim();
+  if (!url || !isLikelyAppsScriptExec(url)) { log('ReplaceAll aborted: invalid Apps Script URL'); return; }
+  const secret = (state.settings.appsScriptSecret||'').trim();
+
+  const zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+    ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
+    : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
+  const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: getRaidKitSummary(v.items||[]) }));
+  const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+
+  const payload = { secret, action: 'replaceAll', upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
+  try{
+    const res = await postJson(url, payload);
+    log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
+  }catch(e){
+    log('ReplaceAll error', e.message);
+  }
+}
+
 // New: push a single character inventory to a new sheet tab (like the screenshot)
 async function pushInventoryToNewSheet(character){
   ensureSettings();
@@ -795,6 +819,19 @@ function buildMenu(){
     { label: 'Settings…', click: openSettingsWindow },
     { type: 'separator' },
     { label: 'Docs (Sheets deploy)', click: openDocsWindow },
+    { label: 'Full refresh to sheet (replace all)', click: async () => {
+        try{
+          const url = (state.settings.appsScriptUrl||'').trim();
+          if (!url || !isLikelyAppsScriptExec(url)) { dialog.showMessageBox({ type: 'warning', message: 'Apps Script URL is not set or invalid.' }); return; }
+          const res = await dialog.showMessageBox({
+            type: 'question', buttons: ['Cancel','Proceed'], defaultId: 1, cancelId: 0,
+            message: 'Replace all rows in Google Sheet?',
+            detail: 'This will clear and rewrite Zone Tracker, CoV Faction, Inventory Summary, and Inventory Items using current data.'
+          });
+          if (res.response === 1) await sendReplaceAllWebhook();
+        }catch(e){ log('ReplaceAll menu error', e.message); }
+      }
+    },
     { label: 'Rescan now', click: () => { doScanCycle(); } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { type: 'separator' },
