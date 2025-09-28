@@ -1191,8 +1191,10 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
   return { path: p };
 });
 app.whenReady().then(() => {
-  const iconPath = path.join(__dirname, 'assets', 'tray.png');
-  let img = nativeImage.createFromPath(iconPath);
+  const pref1 = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+  const pref2 = path.join(__dirname, 'assets', 'tray.png');
+  let img = nativeImage.createFromPath(pref1);
+  if (img.isEmpty()) img = nativeImage.createFromPath(pref2);
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
   rebuildTray();
