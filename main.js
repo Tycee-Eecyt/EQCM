@@ -654,6 +654,7 @@ async function scanLogs(){
       const covLast = state._covLastStable || (state._covLastStable = {});
       if (!covLast[char]) covLast[char] = {};
 
+      let sawZone = false;
       for (let i=0;i<lines.length;i++){
         const line = lines[i];
 
@@ -666,6 +667,7 @@ async function scanLogs(){
           state.latestZones[char] = { zone, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO, sourceFile: full };
           // New: also record per-file (character+server) to disambiguate same-name chars on multiple servers
           state.latestZonesByFile[full] = { character: char, zone, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO, sourceFile: full };
+          sawZone = true;
           continue;
         }
 
@@ -715,6 +717,10 @@ async function scanLogs(){
             }
           }
         }
+      }
+      // If we didn't see any zone line for this file and have no prior record, add a placeholder entry
+      if (!sawZone && !state.latestZonesByFile[full]){
+        state.latestZonesByFile[full] = { character: char, zone: '', detectedUtcISO: '', detectedLocalISO: '', sourceFile: full };
       }
     } catch(e){
       log('Scan file error', full, e.message);
