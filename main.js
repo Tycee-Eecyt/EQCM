@@ -401,6 +401,7 @@ function countRaidKitForCharacter(character){
 const RE_ZONE = /^\[(?<ts>[^\]]+)\]\s+You have entered (?<zone>.+?)\./i;
 const RE_CON  = new RegExp(String.raw`^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+(?:regards you as an ally|looks upon you warmly|kindly considers you|judges you amiably|regards you indifferently|looks your way apprehensively|glowers at you dubiously|glares at you threateningly|scowls at you).*?$`, 'i');
 const RE_INVIS_ON  = /(You vanish\.|Someone fades away\.|You gather shadows about you\.|Someone steps into the shadows and disappears\.)/i;
+// Note: "You feel yourself starting to appear." is a transition and should still be treated as invis-on.
 const RE_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
 const RE_SELF_INVIS_ON  = /(You vanish\.|You gather shadows about you\.)/i;
 const RE_SELF_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
@@ -444,6 +445,99 @@ function parseEqTimestamp(tsStr){
   return { utcISO: new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString(), localISO: dt.toLocaleString(), when: dt };
 }
 
+// ---------- CoV recompute (tail scan, bottom-first, skip invis) ----------
+function recalcCovFactionFromTail(){
+  try{
+    ensureSettings();
+    const logsDir = state.settings.logsDir;
+    if (!logsDir || !fs.existsSync(logsDir)) return;
+    const covSet = getCovSet();
+    const acceptAll = !!state.settings.acceptAllConsiders;
+    const preferScore = (a, b) => (a == null ? -1 : a) - (b == null ? -1 : b);
+    const byChar = {};
+    // Build mapping of character -> candidate log file (latest source if available)
+    const files = {};
+    Object.values(state.latestZonesByFile||{}).forEach(v => { if (v && v.character) files[v.character] = v.sourceFile; });
+    // Fallback: pick any eqlog_<Name>*.txt in logsDir for characters we know
+    const allLogs = fs.readdirSync(logsDir).filter(f => /^eqlog_.+?\.txt$/i.test(f));
+    function pickFileFor(char){
+      if (files[char] && fs.existsSync(files[char])) return files[char];
+      const re = new RegExp('^eqlog_'+char.replace(/[^A-Za-z0-9_-]/g,'.')+'.+?\.txt$','i');
+      const m = allLogs.find(f => re.test(f));
+      return m ? path.join(logsDir, m) : '';
+    }
+    // For each known character in inventory or zones
+    const chars = new Set([ ...Object.keys(state.inventory||{}), ...Object.keys(state.latestZones||{}), ...Object.values(state.latestZonesByFile||{}).map(v=>v.character||'') ]);
+    for (const char of Array.from(chars).filter(Boolean)){
+      const fp = pickFileFor(char);
+      if (!fp || !fs.existsSync(fp)) continue;
+      let buf = null;
+      try{
+        const st = fs.statSync(fp);
+        const max = 200*1024; // 200KB tail is plenty for recent considers
+        const fd = fs.openSync(fp,'r');
+        const size = st.size;
+        const start = Math.max(0, size - max);
+        const len = size - start;
+        const tmp = Buffer.alloc(len);
+        fs.readSync(fd, tmp, 0, len, start);
+        fs.closeSync(fd);
+        buf = tmp.toString('utf8');
+      }catch(e){ continue; }
+      if (!buf) continue;
+      const lines = buf.replace(/\r\n/g,'\n').split('\n');
+      let selfInvis = false;
+      let found = null; // { standing, score, mob, detectedUtcISO, detectedLocalISO }
+      for (let i=lines.length-1; i>=0; i--){
+        const line = lines[i];
+        if (!line) continue;
+        // Self invis markers
+        if (RE_SELF_INVIS_ON.test(line)) { selfInvis = true; continue; }
+        if (/You feel yourself starting to appear\./i.test(line)) { /* still invis */ continue; }
+        if (RE_SELF_INVIS_OFF.test(line)) { selfInvis = false; continue; }
+        const m = RE_CON.exec(line);
+        if (!m) continue;
+        const mob = String(m.groups && m.groups.mob || '').trim();
+        if (!acceptAll) {
+          const key = mob.toLowerCase().replace(/\s+/g,' ');
+          if (!covSet.has(key)) continue;
+        }
+        // Determine standing
+        let standing=null, score=null;
+        for (const s of STANDINGS){ if (s.test.test(line)){ standing=s.key; score=s.score; break; } }
+        if (!standing) continue;
+        // Skip considers while invis is active
+        if (selfInvis) continue;
+        // Timestamps for output
+        const ts = String(m.groups && m.groups.ts || '').trim();
+        const when = parseEqTimestamp(ts);
+        // Bottom-first guarantees first stable hit is the best/latest by position; still prefer higher score if tied by position somehow
+        if (!found || (preferScore(score, found.score) > 0)){
+          found = { character: char, standing, score, mob, detectedUtcISO: when.utcISO, detectedLocalISO: when.localISO };
+          // Early exit if Ally: cannot be improved
+          if (score === 1450) break;
+        }
+      }
+      if (found){
+        byChar[char] = found;
+      }
+    }
+    // Commit to state.covFaction (do not downgrade existing better scores)
+    for (const [char, rec] of Object.entries(byChar)){
+      const prev = state.covFaction[char];
+      if (!prev || (rec.score??0) >= (prev.score??0)){
+        state.covFaction[char] = {
+          standing: rec.standing,
+          standingDisplay: rec.standing,
+          score: rec.score,
+          mob: rec.mob,
+          detectedUtcISO: rec.detectedUtcISO,
+          detectedLocalISO: rec.detectedLocalISO
+        };
+      }
+    }
+  }catch(e){ log('recalcCovFactionFromTail error', e.message); }
+}
 // ---------- CSV ----------
 function writeCsv(filePath, header, rows){
   // Returns true if file content changed
@@ -1041,6 +1135,8 @@ async function doScanCycle(){
   try{
     await scanLogs();
     await scanInventory();
+    // Recompute CoV standings bottom-first and skip invis considers
+    try { recalcCovFactionFromTail(); } catch {}
     saveState();
     const changed = await maybeWriteLocalSheets();
     if (changed) await maybePostWebhook();
