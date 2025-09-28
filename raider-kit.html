@@ -11,6 +11,7 @@
     .list { border:1px solid #ddd; max-height:360px; overflow:auto; padding:8px; }
     .item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid #f1f1f1; }
     .small { font-size: 12px; color:#555; }
+    #toast { position: fixed; right: 16px; bottom: 16px; background: rgba(30,30,30,0.92); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: none; z-index: 9999; }
   </style>
   <script>
     let kit = { defaults: [], custom: [], hidden: [], merged: [] };
@@ -50,10 +51,13 @@
     function escapeRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
     async function saveEdit(idx, oldName){ const inp=document.getElementById('edit-name-'+idx); const newName=(inp&&inp.value?String(inp.value).trim():''); const modeSel=document.getElementById('edit-mode-'+idx); const mode=(modeSel&&modeSel.value)||'present'; window._editingIdx=-1; window._editingName=''; if(!newName||newName===oldName){ render(); return; } const customIdx=(kit.custom||[]).findIndex(x=>x.name===oldName); if(customIdx>=0){ kit.custom[customIdx].name=newName; kit.custom[customIdx].mode=(mode==='count'?'count':'present'); if(!kit.custom[customIdx].pattern) kit.custom[customIdx].pattern='^'+escapeRe(newName)+'$'; } else { kit.hidden=Array.from(new Set([...(kit.hidden||[]), oldName])); const pattern='^'+escapeRe(newName)+'$'; kit.custom=Array.from(new Set([ ...(kit.custom||[]), JSON.stringify({ name:newName, mode:(mode==='count'?'count':'present'), pattern }) ])).map(s=>JSON.parse(s)); } await persist(); }
     async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(); }
+    function showToast(msg, dur=800){ const t=document.getElementById('toast'); if(!t) return; t.textContent=msg||''; t.style.display='block'; setTimeout(()=>{ t.style.display='none'; }, dur); }
     async function saveAndClose(){
       // Save instantly and trigger background push without blocking the UI
       try { await window.EQCM.saveRaidKitAndPush({ items: kit.custom, hidden: kit.hidden }); } catch(e) {}
-      window.close();
+      // Brief toast for user feedback, then close
+      showToast('Saved. Syncing in background…', 700);
+      setTimeout(()=>{ window.close(); }, 650);
     }
     async function persist(){ await window.EQCM.setRaidKit({ items: kit.custom, hidden: kit.hidden }); kit = await window.EQCM.getRaidKit(); render(); setStatus('Saved'); }
     window.addEventListener('DOMContentLoaded', ()=>{ load(); });
@@ -78,5 +82,6 @@
     <button onclick="resetCustom()">Reset Custom Items</button>
     <span id="status" class="small" style="color:#555"></span>
   </div>
+  <div id="toast"></div>
 </body>
 </html>
