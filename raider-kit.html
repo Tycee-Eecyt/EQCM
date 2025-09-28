@@ -86,20 +86,20 @@
       }
       await persist();
     }
-    async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(); }
+    async function resetCustom(){ kit.custom=[]; kit.hidden=[]; await persist(false); }
     async function saveAndClose(){
       // Save instantly and trigger background push without blocking the UI
       try { await window.EQCM.saveRaidKitAndPush({ items: kit.custom, hidden: kit.hidden }); } catch(e) {}
       // Close immediately
       window.close();
     }
-    async function persist(){
+    async function persist(showStatus=true){
       try{
         const payload = { items: normalizeCustom(kit.custom), hidden: kit.hidden||[] };
         await window.EQCM.setRaidKit(payload);
         kit = await window.EQCM.getRaidKit();
         render();
-        setStatus('Saved');
+        if (showStatus) setStatus('Saved');
       }catch(e){ alert('Save failed: ' + (e && e.message || e)); }
     }
     window.addEventListener('DOMContentLoaded', ()=>{ load(); });
