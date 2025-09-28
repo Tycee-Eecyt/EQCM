@@ -1113,7 +1113,7 @@ const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   return baseRow.concat(extraVals);
 });
 const iRowsOut = filterRowsByFavorites(iRows);
-writeCsv(path.join(dir, 'Inventory Summary.csv'), fullHead, iRowsOut);
+writeCsv(path.join(dir, 'Raid Kit Summary.csv'), fullHead, iRowsOut);
 
   // per-character CSV
   for (const [char, inv] of Object.entries(state.inventory || {})){
@@ -1372,8 +1372,11 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
   return { path: p };
 });
 app.whenReady().then(() => {
+  try { ensureShieldIco(); } catch {}
   const trayImg = getTrayIconImage();
   tray = new Tray(trayImg);
+  try { tray.on('click', () => { openSettingsWindow(); }); } catch {}
+  try { tray.on('right-click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   rebuildTray();
   startScanning();
 });

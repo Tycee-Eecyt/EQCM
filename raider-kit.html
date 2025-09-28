@@ -24,6 +24,11 @@
     <button onclick="refreshCounts()">Refresh Counts</button>
   </div>
 
+  <div class="row" style="margin:8px 0">
+    <input id="filter" type="text" placeholder="Filter items (type to search)"/>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
+
   <h3>Items</h3>
   <div class="row">
     <input id="newName" type="text" placeholder="Item name (e.g., Potion of Stinging Wort)"/>
@@ -35,12 +40,15 @@
   <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
     <button onclick="saveAndClose()">Save & Close</button>
     <button onclick="resetCustom()">Reset Custom Items</button>
+    <button onclick="exportMerged('json')">Export Merged (JSON)</button>
+    <button onclick="exportMerged('text')">Export Merged (Text)</button>
   </div>
 
   <script>
     let kit = { defaults: [], custom: [], hidden: [], merged: [] };
     let counts = [];
     let characters = [];
+    let filterQuery = '';
 
     async function load(){
       const data = await window.EQCM.getSettings();
@@ -63,7 +71,8 @@
     function render(){
       const box = document.getElementById('kitList');
       box.innerHTML = '';
-      const merged = kit.merged || [];
+      const mergedAll = kit.merged || [];
+      const merged = filterQuery ? mergedAll.filter(it => it.name.toLowerCase().includes(filterQuery)) : mergedAll;
       merged.forEach((it, idx) => {
         const row = document.createElement('div'); row.className='item';
         const left = document.createElement('div');
@@ -83,6 +92,8 @@
         box.appendChild(row);
       });
     }
+    function clearFilter(){ document.getElementById('filter').value=''; filterQuery=''; render(); }
+    document.addEventListener('input', (e) => { if (e.target && e.target.id==='filter'){ filterQuery = (e.target.value||'').trim().toLowerCase(); render(); } });
     async function setItemMode(name, mode){
       // change in custom if exists; else add override
       const idx = (kit.custom||[]).findIndex(i => i.name===name);
@@ -119,8 +130,15 @@
       await window.EQCM.setRaidKit({ items: kit.custom, hidden: kit.hidden });
       window.close();
     }
+    async function exportMerged(fmt){
+      try{
+        const merged = kit.merged || [];
+        const payload = (fmt==='json') ? JSON.stringify(merged, null, 2) : merged.map(it => `${it.name} [${it.mode}]`).join('\n');
+        await navigator.clipboard.writeText(payload);
+        alert('Merged kit copied to clipboard');
+      } catch(e){ alert('Copy failed: ' + (e && e.message || e)); }
+    }
     load();
   </script>
 </body>
 </html>
-
