@@ -1,17 +1,38 @@
 {
   "name": "eq-character-manager",
-  "version": "1.7.7",
+  "version": "1.8.0",
   "description": "EQ Character Manager \u2014 system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
   "main": "main.js",
   "author": "Tyler A",
   "license": "MIT",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
   },
   "build": {
-    "icon": "assets/tray-256.png"
+    "appId": "com.tyler.eq-character-manager",
+    "productName": "EQ Character Manager",
+    "files": [
+      "**/*",
+      "!node_modules/.cache/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/tray-256.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false
+    }
   }
 }

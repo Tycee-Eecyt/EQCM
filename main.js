@@ -101,10 +101,26 @@ let state = {
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   offsets: {},             // file -> byte offset
   latestZones: {},         // char -> { zone, detectedUtcISO, detectedLocalISO, sourceFile }
+  // New: track per-log (character+server) so same name on multiple servers doesn't collide
+  latestZonesByFile: {},   // filePath -> { character, zone, detectedUtcISO, detectedLocalISO, sourceFile }
   covFaction: {},          // char -> { standing, standingDisplay, score, mob, detectedUtcISO, detectedLocalISO }
   inventory: {},           // char -> { filePath, fileCreated, fileModified, items[] }
   settings: {}
 };
+
+// Helper: latest zone source file for a character across all servers
+function getLatestZoneSourceForChar(character){
+  try{
+    let best = null;
+    const values = Object.values(state.latestZonesByFile || {});
+    for (const v of values){
+      if ((v.character||'') !== character) continue;
+      if (!best || String(v.detectedUtcISO||'') > String(best.detectedUtcISO||'')) best = v;
+    }
+    if (best) return best.sourceFile || '';
+  }catch(e){}
+  return (state.latestZones[character]?.sourceFile||'') || '';
+}
 
 function ensureSettings(){
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
@@ -484,9 +500,12 @@ async function maybePostWebhook(){
   if (!isLikelyAppsScriptExec(url)) { log('Webhook not attempted: URL does not look like a /exec endpoint'); return; }
   const secret = (state.settings.appsScriptSecret||'').trim();
 
-  const zoneRows = Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
+  // Prefer per-file rows so characters on multiple servers don't collide
+  const zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+    ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
+    : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
   const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', logFile: (state.latestZones[character]?.sourceFile||''), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: getRaidKitSummary(v.items||[]) }));
+  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: getRaidKitSummary(v.items||[]) }));
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   const payload = { secret, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
@@ -522,7 +541,7 @@ async function pushInventoryToNewSheet(character){
       file: inv.filePath||'',
       created: inv.fileCreated||'',
       modified: inv.fileModified||'',
-      logFile: (state.latestZones[character]?.sourceFile||'') || ''
+      logFile: getLatestZoneSourceForChar(character)
     },
     items: inv.items
   };
@@ -589,10 +608,12 @@ let scanTimer = null;
 async function scanLogs(){
   const dir = state.settings.logsDir;
   if (!dir || !fs.existsSync(dir)) return;
+  if (!state.latestZonesByFile || typeof state.latestZonesByFile !== 'object') state.latestZonesByFile = {};
   const files = fs.readdirSync(dir).filter(f => /^eqlog_.+?\.txt$/i.test(f));
   for (const f of files){
     const full = path.join(dir, f);
-    const char = f.replace(/^eqlog_([^_]+).*$/i,'$1');
+    const parsed = parseLogName(f);
+    const char = (parsed && parsed.name) ? parsed.name : f.replace(/^eqlog_([^_]+).*$/i,'$1');
     try {
       const last = state.offsets[full] || 0;
       const stat = fs.statSync(full);
@@ -617,7 +638,10 @@ async function scanLogs(){
         if (mZ){
           const { ts, zone } = mZ.groups;
           const t = parseEqTimestamp(ts);
+          // Maintain legacy per-character mapping (last one wins)
           state.latestZones[char] = { zone, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO, sourceFile: full };
+          // New: also record per-file (character+server) to disambiguate same-name chars on multiple servers
+          state.latestZonesByFile[full] = { character: char, zone, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO, sourceFile: full };
           continue;
         }
 
@@ -715,7 +739,9 @@ async function maybeWriteLocalSheets(){
   const dir = state.settings.localSheetsDir && state.settings.localSheetsDir.trim() ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
 
   const zHead = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
-  const zRows = Object.entries(state.latestZones || {}).map(([char, v]) => [char, v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||'']);
+  const zRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+    ? Object.values(state.latestZonesByFile).map(v => [v.character||'', v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||''])
+    : Object.entries(state.latestZones || {}).map(([char, v]) => [char, v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||'']);
 const zRowsOut = filterRowsByFavorites(zRows);
   writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut);
 
@@ -732,7 +758,7 @@ const fRowsOut = filterRowsByFavorites(fRows);
 const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const kit = getRaidKitSummary(v.items||[]);
   const suggested = `Inventory - ${char}`;
-  return [char, getLogId(v.filePath||''), v.filePath||'', (state.latestZones[char]?.sourceFile||''), v.fileCreated||'', v.fileModified||'',
+  return [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
           kit.vialVeliumVapors, kit.veliumVialCount, kit.leatherfootSkullcap, kit.shinyBrassIdol,
           kit.ringOfShadowsCount, kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.larrikansMask,
           kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
@@ -828,7 +854,10 @@ ipcMain.handle('settings:set', async (evt, payload) => {
   return { ok: true };
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
-  const pick = await dialog.showOpenDialog({ title: 'Select Folder', properties: ['openDirectory'] });
+  let title = 'Select Folder';
+  if (which === 'logsDir') title = 'Select Log Folder';
+  else if (which === 'baseDir') title = 'Select Base EverQuest Folder';
+  const pick = await dialog.showOpenDialog({ title, properties: ['openDirectory'] });
   if (pick.canceled || !pick.filePaths[0]) return { path: '' };
   const p = pick.filePaths[0];
   if (which === 'logsDir') state.settings.logsDir = p;

@@ -114,7 +114,8 @@ function upsertZones_(ss, rows){
   const header = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
   const sh = getOrMakeSheet_(ss, CONFIG.ZONES_SHEET);
   const data = rows.map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
-  upsertRowsByKey_(sh, header, 'Character', data);
+  // Key by Source Log File so same character on different servers are separate rows
+  upsertRowsByKey_(sh, header, 'Source Log File', data);
 }
 
 function upsertFactions_(ss, rows){
