@@ -30,6 +30,14 @@
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
     <button onclick="pick('localSheetsDir')">Browse…</button>
 
+    <label>Backscan size (MB)</label>
+    <input id="backscanMaxMB" type="number" min="0" max="20" step="1" placeholder="0 = full file, else 5–20"/>
+    <div class="small">0 = read the full file; otherwise reads this many MB (5–20) from the end when backscanning for the most recent zone.</div>
+
+    <label>Backscan retry minutes</label>
+    <input id="backscanRetryMinutes" type="number" min="0" step="1" placeholder="0 = disable periodic retry"/>
+    <div class="small">If no zone found yet, retry backscan every N minutes until one is found.</div>
+
     <label>Scan interval</label>
     <select id="scanIntervalSec">
       <option>30</option><option>60</option><option>120</option><option>300</option>
@@ -71,6 +79,8 @@
     async function load(){
       const { settings } = await window.EQCM.getSettings();
       ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
+      byId('backscanMaxMB').value = String(settings.backscanMaxMB ?? 10);
+      byId('backscanRetryMinutes').value = String(settings.backscanRetryMinutes ?? 10);
       ['localSheetsEnabled','remoteSheetsEnabled'].forEach(k => byId(k).checked = !!settings[k]);
       byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
     }
@@ -84,7 +94,9 @@
         sheetUrl: byId('sheetUrl').value.trim(),
         scanIntervalSec: Number(byId('scanIntervalSec').value),
         localSheetsEnabled: byId('localSheetsEnabled').checked,
-        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked
+        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked,
+        backscanMaxMB: Number(byId('backscanMaxMB').value),
+        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value)
       };
       await window.EQCM.setSettings(payload);
       alert('Saved.');

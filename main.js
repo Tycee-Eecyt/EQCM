@@ -94,7 +94,11 @@ const DEFAULT_SETTINGS = {
 
   localSheetsEnabled: true,
   localSheetsDir: "",
-  remoteSheetsEnabled: true
+  remoteSheetsEnabled: true,
+
+  // Backscan configuration
+  backscanMaxMB: 0,             // 0 = full file; otherwise clamp 5–20 MB
+  backscanRetryMinutes: 10      // 0 disables periodic retry after first attempt
 };
 
 let state = {
@@ -126,6 +130,20 @@ function ensureSettings(){
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   state.settings = Object.assign({}, DEFAULT_SETTINGS, state.settings);
   return state.settings;
+}
+
+function clamp(n, lo, hi){ n = Number(n||0); if (Number.isNaN(n)) n=0; return Math.max(lo, Math.min(hi, n)); }
+function getBackscanBytes(){
+  ensureSettings();
+  const raw = Number(state.settings.backscanMaxMB || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0; // 0 means unlimited (full file)
+  const mb = clamp(raw, 5, 20);
+  return mb * 1024 * 1024;
+}
+function getBackscanRetryMs(){
+  ensureSettings();
+  const mins = Math.max(0, Number(state.settings.backscanRetryMinutes||0));
+  return mins * 60 * 1000;
 }
 
 // ---------- state/settings I/O ----------
@@ -629,6 +647,55 @@ function parseInventoryFile(filePath){
 // ---------- scanning ----------
 let scanTimer = null;
 
+// On first sight of a log file, backscan from the end to find
+// the most recent zone line so we can seed Zone Tracker without
+// waiting for the next zone event.
+function findLastZoneInFile(filePath, maxBytes = 0){
+  try{
+    const stat = fs.statSync(filePath);
+    const size = stat.size || 0;
+    if (size <= 0) return null;
+    const fd = fs.openSync(filePath, 'r');
+    const block = 512 * 1024; // 512KB chunks
+    let endPos = size;
+    let readTotal = 0;
+    const limit = (!Number.isFinite(maxBytes) || maxBytes <= 0) ? size : Math.min(maxBytes, size);
+    let carry = '';
+    while (endPos > 0 && readTotal < limit){
+      const toRead = Math.min(block, endPos, limit - readTotal);
+      const startPos = endPos - toRead;
+      const buf = Buffer.alloc(toRead);
+      fs.readSync(fd, buf, 0, toRead, startPos);
+      let current = buf.toString('utf8', 0, toRead) + carry;
+
+      // Scan lines from end to start for the first zone match
+      let idxEnd = current.length;
+      while (idxEnd > 0){
+        const idxNL = current.lastIndexOf('\n', idxEnd - 1);
+        const line = current.substring(idxNL + 1, idxEnd).replace(/\r$/, '');
+        const mZ = line.match(RE_ZONE);
+        if (mZ){
+          const { ts, zone } = mZ.groups;
+          const t = parseEqTimestamp(ts);
+          fs.closeSync(fd);
+          return { zone, utcISO: t.utcISO, localISO: t.localISO };
+        }
+        if (idxNL < 0) break;
+        idxEnd = idxNL;
+      }
+
+      // Preserve any incomplete first line at the beginning for the next earlier chunk
+      const firstNL = current.indexOf('\n');
+      carry = firstNL >= 0 ? current.substring(0, firstNL) : current;
+
+      endPos = startPos;
+      readTotal += toRead;
+    }
+    fs.closeSync(fd);
+    return null;
+  }catch(e){ log('findLastZoneInFile error', filePath, e.message); return null; }
+}
+
 async function scanLogs(){
   const dir = state.settings.logsDir;
   if (!dir || !fs.existsSync(dir)) return;
@@ -639,6 +706,7 @@ async function scanLogs(){
     const parsed = parseLogName(f);
     const char = (parsed && parsed.name) ? parsed.name : f.replace(/^eqlog_([^_]+).*$/i,'$1');
     try {
+      const hadOffset = Object.prototype.hasOwnProperty.call(state.offsets || {}, full);
       const last = state.offsets[full] || 0;
       const stat = fs.statSync(full);
       let start = last && last < stat.size ? last : Math.max(0, stat.size - 256*1024);
@@ -718,7 +786,30 @@ async function scanLogs(){
           }
         }
       }
-      // If we didn't see any zone line for this file and have no prior record, add a placeholder entry
+      // If we didn't see any zone in the recent tail: backscan from end to find the most recent zone.
+      // Try on first sight; if still no zone recorded, retry periodically per settings.
+      const rec = state.latestZonesByFile[full];
+      const haveZone = !!(rec && rec.zone);
+      if (!sawZone && (!hadOffset || !haveZone)){
+        const now = Date.now();
+        if (!state._backscanNextAtByFile) state._backscanNextAtByFile = {};
+        const retryMs = getBackscanRetryMs();
+        const nextAt = state._backscanNextAtByFile[full] || 0;
+        const shouldTry = (!hadOffset) || (now >= nextAt);
+        if (shouldTry){
+          const lastZ = findLastZoneInFile(full, getBackscanBytes());
+          if (retryMs > 0) state._backscanNextAtByFile[full] = now + retryMs; else state._backscanNextAtByFile[full] = now + (24*60*60*1000);
+          if (lastZ){
+            state.latestZones[char] = { zone: lastZ.zone, detectedUtcISO: lastZ.utcISO, detectedLocalISO: lastZ.localISO, sourceFile: full };
+            state.latestZonesByFile[full] = { character: char, zone: lastZ.zone, detectedUtcISO: lastZ.utcISO, detectedLocalISO: lastZ.localISO, sourceFile: full };
+            sawZone = true;
+            delete state._backscanNextAtByFile[full];
+            log('Backscan seeded last zone', char, lastZ.zone);
+          }
+        }
+      }
+
+      // If we still didn't see any zone line for this file and have no prior record, add a placeholder entry
       if (!sawZone && !state.latestZonesByFile[full]){
         state.latestZonesByFile[full] = { character: char, zone: '', detectedUtcISO: '', detectedLocalISO: '', sourceFile: full };
       }
@@ -839,7 +930,13 @@ function buildMenu(){
       }
     },
     { label: 'Rescan now', click: () => { doScanCycle(); } },
+    { label: 'Force backscan (missing zones)', click: async () => { try { await forceBackscanMissingZones(); } catch(e){ log('Force backscan error', e.message); } } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
+    { label: 'Open local CSV folder', click: () => {
+        const outDir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
+        shell.openPath(outDir);
+      }
+    },
     { type: 'separator' },
     { label: scanTimer ? 'Pause scanning' : 'Start scanning', click: () => { scanTimer ? stopScanning() : startScanning(); rebuildTray(); } },
     scanSub,
@@ -863,6 +960,37 @@ function openDocsWindow(){
   const win = new BrowserWindow({ width: 900, height: 740, resizable: true });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'docs', 'deploy-sheets.html'));
+}
+
+// Debug helper: backscan any files that still have no zone recorded
+async function forceBackscanMissingZones(){
+  ensureSettings();
+  const dir = state.settings.logsDir;
+  if (!dir || !fs.existsSync(dir)) { log('Force backscan: logsDir not set'); return; }
+  const files = fs.readdirSync(dir).filter(f => /^eqlog_.+?\.txt$/i.test(f));
+  let updated = 0, missing = 0;
+  for (const f of files){
+    const full = path.join(dir, f);
+    const rec = state.latestZonesByFile[full];
+    const haveZone = !!(rec && rec.zone);
+    if (haveZone) continue;
+    const parsed = parseLogName(f);
+    const char = (parsed && parsed.name) ? parsed.name : f.replace(/^eqlog_([^_]+).*$/i,'$1');
+    const lastZ = findLastZoneInFile(full, getBackscanBytes());
+    if (lastZ){
+      state.latestZones[char] = { zone: lastZ.zone, detectedUtcISO: lastZ.utcISO, detectedLocalISO: lastZ.localISO, sourceFile: full };
+      state.latestZonesByFile[full] = { character: char, zone: lastZ.zone, detectedUtcISO: lastZ.utcISO, detectedLocalISO: lastZ.localISO, sourceFile: full };
+      updated++;
+      log('Force backscan seeded last zone', char, lastZ.zone);
+    } else {
+      missing++;
+      log('Force backscan no zone found', char, full);
+    }
+  }
+  saveState();
+  await maybeWriteLocalSheets();
+  await maybePostWebhook();
+  log('Force backscan summary', { updated, missing });
 }
 
 // ---------- IPC ----------
