@@ -583,7 +583,8 @@ function buildRaidKitExtrasForCharacter(character){
 }
 
 // One-shot replace-all import to Apps Script
-async function sendReplaceAllWebhook(){
+async function sendReplaceAllWebhook(opts){
+  const notify = !!(opts && (opts.notify === true));
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) { log('ReplaceAll skipped: remoteSheetsEnabled=false'); return; }
   const url = (state.settings.appsScriptUrl||'').trim();
@@ -606,8 +607,20 @@ async function sendReplaceAllWebhook(){
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
+    if (notify) {
+      try {
+        const ok = (res.status >= 200 && res.status < 300);
+        if (Notification && Notification.isSupported()) new Notification({
+          title: 'EQ Character Manager',
+          body: ok ? 'Raid kit sync complete.' : `Raid kit sync returned ${res.status}`
+        }).show();
+      } catch {}
+    }
   }catch(e){
     log('ReplaceAll error', e.message);
+    if (notify) {
+      try { if (Notification && Notification.isSupported()) new Notification({ title: 'EQ Character Manager', body: 'Raid kit sync failed.' }).show(); } catch {}
+    }
   }
 }
 
@@ -1349,7 +1362,7 @@ ipcMain.handle('raidkit:saveAndPush', async (evt, payload) => {
     saveSettings();
     // Notify user and trigger push in background without blocking the UI
     try { if (Notification && Notification.isSupported()) new Notification({ title: 'EQ Character Manager', body: 'Raid kit saved. Syncing in background…' }).show(); } catch {}
-    setImmediate(() => { sendReplaceAllWebhook().catch(() => {}); });
+    setImmediate(() => { sendReplaceAllWebhook({ notify: true }).catch(() => {}); });
     return { ok: true };
   } catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
