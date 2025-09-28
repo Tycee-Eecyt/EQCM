@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Deploy Google Sheets backend</title>
+  <title>Getting Started — Google Sheets Backend</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 18px; line-height: 1.45; max-width: 900px; }
     code, pre { background: #f5f5f5; padding: 2px 4px; border-radius: 4px; }
@@ -12,7 +12,7 @@
   </style>
 </head>
 <body>
-  <h1>Google Sheets Backend — Setup</h1>
+  <h1>Getting Started — Google Sheets Backend</h1>
   <p>This page helps you deploy the Apps Script that the tray app calls. It also supports per-character <b>Push inventory to sheet</b> tabs like your screenshot layout.</p>
 
   <h2>1) Create a Spreadsheet</h2>
@@ -32,6 +32,10 @@
 
   <h2>3) Code.gs</h2>
   <p>You can copy the file at <code>docs/Code.gs</code> from this repo, or paste the snippet below into your Apps Script project.</p>
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+    <button id="copyAll">Copy All</button>
+    <span class="small" id="copyStatus"></span>
+  </div>
   <pre id="code"></pre>
 
   <script>
@@ -247,6 +251,17 @@ function pushInventorySheet_(ss, body){
   return { ok:true, sheet: name };
 }`;
   document.getElementById('code').textContent = code;
+  document.getElementById('copyAll').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      const el = document.getElementById('copyStatus');
+      el.textContent = 'Copied to clipboard';
+      setTimeout(() => el.textContent = '', 1500);
+    } catch(e){
+      const el = document.getElementById('copyStatus');
+      el.textContent = 'Copy failed: ' + (e && e.message || e);
+    }
+  });
   </script>
 </body>
 </html>

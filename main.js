@@ -1049,7 +1049,7 @@ function buildMenu(){
     { label: 'Settings…', click: openSettingsWindow },
     { label: 'Advanced…', click: openAdvancedWindow },
     { type: 'separator' },
-    { label: 'Docs (Sheets deploy)', click: openDocsWindow },
+    { label: 'Getting Started', click: openDocsWindow },
     { label: 'Rescan now', click: () => { doScanCycle(); } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { label: 'Open local CSV folder', click: () => {
@@ -1070,28 +1070,75 @@ function makeHidable(win){
 }
 function openSettingsWindow(){
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
-  settingsWin = new BrowserWindow({ width: 900, height: 700, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  settingsWin = new BrowserWindow({ width: 900, height: 700, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(__dirname, 'settings.html'));
   makeHidable(settingsWin);
   settingsWin.on('closed', () => settingsWin = null);
 }
 function openDocsWindow(){
-  const win = new BrowserWindow({ width: 900, height: 740, resizable: true });
+  const win = new BrowserWindow({ width: 900, height: 740, resizable: true, icon: getWindowIconImage() });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'docs', 'deploy-sheets.html'));
 }
 function openCovWindow(){
-  const win = new BrowserWindow({ width: 900, height: 740, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  const win = new BrowserWindow({ width: 900, height: 740, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'cov-list.html'));
   makeHidable(win);
 }
 function openAdvancedWindow(){
-  const win = new BrowserWindow({ width: 800, height: 600, resizable: true, webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  const win = new BrowserWindow({ width: 800, height: 600, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'advanced.html'));
   makeHidable(win);
+}
+
+// ---------- Icon helpers (SVG rasterize with fallback) ----------
+function tryCreateImageFromSvg(svgPath){
+  try {
+    if (!fs.existsSync(svgPath)) return null;
+    const svg = fs.readFileSync(svgPath, 'utf8');
+    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64');
+    const img = nativeImage.createFromDataURL(dataUrl);
+    if (img && !img.isEmpty()) return img;
+  } catch {}
+  return null;
+}
+function getTrayIconImage(){
+  const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+  const icoPath = path.join(__dirname, 'assets', 'simple-xp-shield.ico');
+  const pngPath = path.join(__dirname, 'assets', 'tray.png');
+  // Prefer ICO on Windows if provided
+  if (process.platform === 'win32' && fs.existsSync(icoPath)){
+    const ico = nativeImage.createFromPath(icoPath);
+    if (ico && !ico.isEmpty()) return ico;
+  }
+  const prefer = tryCreateImageFromSvg(svgPath);
+  if (prefer && !prefer.isEmpty()){
+    const resized = prefer.resize({ width: 24, height: 24, quality: 'best' });
+    if (!resized.isEmpty()) return resized;
+  }
+  let img = nativeImage.createFromPath(pngPath);
+  if (!img || img.isEmpty()) img = nativeImage.createEmpty();
+  return img;
+}
+function getWindowIconImage(){
+  const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
+  const icoPath = path.join(__dirname, 'assets', 'simple-xp-shield.ico');
+  const pngPath = path.join(__dirname, 'assets', 'tray.png');
+  if (process.platform === 'win32' && fs.existsSync(icoPath)){
+    const ico = nativeImage.createFromPath(icoPath);
+    if (ico && !ico.isEmpty()) return ico;
+  }
+  const prefer = tryCreateImageFromSvg(svgPath);
+  if (prefer && !prefer.isEmpty()){
+    const resized = prefer.resize({ width: 64, height: 64, quality: 'best' });
+    if (!resized.isEmpty()) return resized;
+  }
+  let img = nativeImage.createFromPath(pngPath);
+  if (!img || img.isEmpty()) img = nativeImage.createEmpty();
+  return img;
 }
 
 // Debug helper: backscan any files that still have no zone recorded
@@ -1191,12 +1238,8 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
   return { path: p };
 });
 app.whenReady().then(() => {
-  const pref1 = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
-  const pref2 = path.join(__dirname, 'assets', 'tray.png');
-  let img = nativeImage.createFromPath(pref1);
-  if (img.isEmpty()) img = nativeImage.createFromPath(pref2);
-  if (img.isEmpty()) img = nativeImage.createEmpty();
-  tray = new Tray(img);
+  const trayImg = getTrayIconImage();
+  tray = new Tray(trayImg);
   rebuildTray();
   startScanning();
 });
