@@ -27,7 +27,7 @@ function doPost(e){
     const upserts = body.upserts || {};
     if (upserts.zones)    upsertZones_(ss, upserts.zones);
     if (upserts.factions) upsertFactions_(ss, upserts.factions);
-    if (upserts.inventory) upsertInventorySummary_(ss, upserts.inventory);
+    if (upserts.inventory) upsertInventorySummary_(ss, upserts.inventory, body.meta || {});
     if (upserts.inventoryDetails) upsertInventoryDetails_(ss, upserts.inventoryDetails);
     return respond_({ ok: true });
   }catch(err){
@@ -115,11 +115,18 @@ function replaceFactions_(ss, rows){
   writeAllRows_(sh, header, data);
 }
 
-function upsertInventorySummary_(ss, rows){
-  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
-                'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+function upsertInventorySummary_(ss, rows, meta){
+  const fixedHeaders = (meta && meta.invFixedHeaders && meta.invFixedHeaders.length) ? meta.invFixedHeaders : [
+    'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
+    'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+    'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'
+  ];
+  const fixedProps = (meta && meta.invFixedProps && meta.invFixedProps.length) ? meta.invFixedProps : [
+    'vialVeliumVapors','leatherfootSkullcap','shinyBrassIdol','ringOfShadowsCount',
+    'reaperOfTheDead','pearlCount','peridotCount','tenDosePotionOfStingingWortCount','pegasusFeatherCloak',
+    'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
+  ];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
   // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
   const extrasSet = new Set();
   (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
@@ -127,11 +134,8 @@ function upsertInventorySummary_(ss, rows){
   const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
   const data = (rows||[]).map(o => {
-    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
-                      o.raidKit?.vialVeliumVapors||'', o.raidKit?.leatherfootSkullcap||'', o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0,
-                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0, o.raidKit?.tenDosePotionOfStingingWortCount||0, o.raidKit?.pegasusFeatherCloak||'',
-                      o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                      o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
+    const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
     const ex = o.kitExtras||{};
     const extraVals = extras.map(h => ex[h] ?? '');
     return baseVals.concat(extraVals);
@@ -139,22 +143,26 @@ function upsertInventorySummary_(ss, rows){
   upsertRowsByKey_(sh, header, 'Character', data);
 }
 
-function replaceInventorySummary_(ss, rows){
-  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
-                'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'];
+function replaceInventorySummary_(ss, rows, meta){
+  const fixedHeaders = (meta && meta.invFixedHeaders && meta.invFixedHeaders.length) ? meta.invFixedHeaders : [
+    'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
+    'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+    'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'
+  ];
+  const fixedProps = (meta && meta.invFixedProps && meta.invFixedProps.length) ? meta.invFixedProps : [
+    'vialVeliumVapors','leatherfootSkullcap','shinyBrassIdol','ringOfShadowsCount',
+    'reaperOfTheDead','pearlCount','peridotCount','tenDosePotionOfStingingWortCount','pegasusFeatherCloak',
+    'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
+  ];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
   const extrasSet = new Set();
   (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
   const extras = Array.from(extrasSet);
   const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
   const data = (rows||[]).map(o => {
-    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified,
-                      o.raidKit?.vialVeliumVapors||'', o.raidKit?.leatherfootSkullcap||'', o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0,
-                      o.raidKit?.reaperOfTheDead||'', o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0, o.raidKit?.tenDosePotionOfStingingWortCount||0, o.raidKit?.pegasusFeatherCloak||'',
-                      o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                      o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ];
+    const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
     const ex = o.kitExtras||{};
     const extraVals = extras.map(h => ex[h] ?? '');
     return baseVals.concat(extraVals);
@@ -191,7 +199,7 @@ function replaceAll_(ss, body){
   const up = body.upserts || body || {};
   if (up.zones)    replaceZones_(ss, up.zones);
   if (up.factions) replaceFactions_(ss, up.factions);
-  if (up.inventory) replaceInventorySummary_(ss, up.inventory);
+  if (up.inventory) replaceInventorySummary_(ss, up.inventory, body.meta || {});
   if (up.inventoryDetails) replaceInventoryDetails_(ss, up.inventoryDetails);
 }
 

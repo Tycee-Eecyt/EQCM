@@ -529,6 +529,30 @@ function isLikelyAppsScriptExec(url){
 function getRaidKitSummary(items){
   return RK.getRaidKitSummary(items);
 }
+
+// Fixed kit columns (ordered) mapping to summary props
+const FIXED_KIT_COLUMN_DEFS = [
+  { name: 'Vial of Velium Vapors', header: 'Vial of Velium Vapors', prop: 'vialVeliumVapors' },
+  { name: 'Leatherfoot Raider Skullcap', header: 'Leatherfoot Raider Skullcap', prop: 'leatherfootSkullcap' },
+  { name: 'Shiny Brass Idol', header: 'Shiny Brass Idol', prop: 'shinyBrassIdol' },
+  { name: 'Ring of Shadows', header: 'Ring of Shadows Count', prop: 'ringOfShadowsCount' },
+  { name: 'Reaper of the Dead', header: 'Reaper of the Dead', prop: 'reaperOfTheDead' },
+  { name: 'Pearl', header: 'Pearl Count', prop: 'pearlCount' },
+  { name: 'Peridot', header: 'Peridot Count', prop: 'peridotCount' },
+  { name: '10 Dose Potion of Stinging Wort', header: '10 Dose Potion of Stinging Wort Count', prop: 'tenDosePotionOfStingingWortCount' },
+  { name: 'Pegasus Feather Cloak', header: 'Pegasus Feather Cloak', prop: 'pegasusFeatherCloak' },
+  { name: "Larrikan's Mask", header: "Larrikan's Mask", prop: 'larrikansMask' },
+  { name: 'Mana Battery - Class Five', header: 'MB Class Five', prop: 'mbClassFive' },
+  { name: 'Mana Battery - Class Four', header: 'MB Class Four', prop: 'mbClassFour' },
+  { name: 'Mana Battery - Class Three', header: 'MB Class Three', prop: 'mbClassThree' },
+  { name: 'Mana Battery - Class Two', header: 'MB Class Two', prop: 'mbClassTwo' },
+  { name: 'Mana Battery - Class One', header: 'MB Class One', prop: 'mbClassOne' }
+];
+function buildEnabledFixedColumns(){
+  ensureSettings();
+  const hidden = new Set((state.settings.raidKitHidden||[]).map(String));
+  return FIXED_KIT_COLUMN_DEFS.filter(def => !hidden.has(def.name));
+}
 async function maybePostWebhook(){
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) return;
@@ -603,7 +627,8 @@ async function sendReplaceAllWebhook(opts){
   });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
-  const payload = { secret, action: 'replaceAll', upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
+  const enabledFixed = buildEnabledFixedColumns();
+  const payload = { secret, action: 'replaceAll', meta: { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) }, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
@@ -1032,11 +1057,11 @@ const zRowsOut = filterRowsByFavorites(zRows);
 const fRowsOut = filterRowsByFavorites(fRows);
   writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut);
 
-  const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                 'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
-                 'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak','Larrikan\'s Mask',
-                 'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One',
-                 'Spreadsheet URL','Suggested Sheet Name'];
+  const enabledFixed = buildEnabledFixedColumns();
+  const fixedHeaders = enabledFixed.map(d => d.header);
+  const iHead = ['Character','Log ID','Inventory File','Source Log File','Created (UTC)','Modified (UTC)']
+                 .concat(fixedHeaders)
+                 .concat(['Spreadsheet URL','Suggested Sheet Name']);
   // Determine dynamic extra headers from merged raid kit (excluding fixed)
   const extraSet = new Set();
   for (const ch of Object.keys(state.inventory||{})){
@@ -1048,11 +1073,10 @@ const fRowsOut = filterRowsByFavorites(fRows);
 const iRows = Object.entries(state.inventory || {}).map(([char, v]) => {
   const kit = getRaidKitSummary(v.items||[]);
   const suggested = `Inventory - ${char}`;
-  const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'',
-          kit.vialVeliumVapors, kit.leatherfootSkullcap, kit.shinyBrassIdol, kit.ringOfShadowsCount,
-          kit.reaperOfTheDead, kit.pearlCount, kit.peridotCount, kit.tenDosePotionOfStingingWortCount, kit.pegasusFeatherCloak, kit.larrikansMask,
-          kit.mbClassFive, kit.mbClassFour, kit.mbClassThree, kit.mbClassTwo, kit.mbClassOne,
-          (state.settings.sheetUrl||''), suggested];
+  const fixedVals = enabledFixed.map(d => kit[d.prop] ?? (d.prop.endsWith('Count') || d.prop.startsWith('mbClass') ? 0 : ''));
+  const baseRow = [char, getLogId(v.filePath||''), v.filePath||'', getLatestZoneSourceForChar(char), v.fileCreated||'', v.fileModified||'']
+          .concat(fixedVals)
+          .concat([(state.settings.sheetUrl||''), suggested]);
   const exList = buildRaidKitExtrasForCharacter(char);
   const exMap = {}; exList.forEach(e => exMap[e.header]=e.value);
   const extraVals = extraHeaders.map(h => exMap[h] ?? '');
