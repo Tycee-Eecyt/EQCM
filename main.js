@@ -41,8 +41,9 @@ function parseLogName(filePath){
 // ---- Favorites CSV helper ----
 function filterRowsByFavorites(rows){
   try {
+    const only = !!(state.settings && state.settings.favoritesOnly);
     const favs = (state.settings && state.settings.favorites) || [];
-    if (!favs.length) return rows || [];
+    if (!only || !favs.length) return rows || [];
     const set = new Set(favs.map(s => String(s).toLowerCase()));
     return (rows || []).filter(r => set.has(String(r && r[0] || '').toLowerCase()));
   } catch { return rows || []; }
