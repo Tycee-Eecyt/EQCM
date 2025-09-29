@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('EQCM', {
   forceBackscan: () => ipcRenderer.invoke('advanced:forceBackscan'),
   replaceAll: (opts) => ipcRenderer.invoke('advanced:replaceAll', opts||{}),
   replaceAllForce: () => ipcRenderer.invoke('advanced:replaceAll', { force: true }),
+  replaceFactionsCsvFromLocal: () => ipcRenderer.invoke('advanced:replaceFactionsCsv'),
   getRaidKit: () => ipcRenderer.invoke('raidkit:get'),
   setRaidKit: (payload) => ipcRenderer.invoke('raidkit:set', payload),
   saveRaidKitAndPush: (payload) => ipcRenderer.invoke('raidkit:saveAndPush', payload),

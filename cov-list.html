@@ -16,6 +16,7 @@
 <body>
   <h2>CoV Mob List</h2>
   <p class="small">View defaults, see the merged effective list, and add/remove entries. Changes take effect immediately.</p>
+  <label class="small" style="display:flex; align-items:center; gap:8px; margin:8px 0"><input type="checkbox" id="acceptAllConsiders"/> Accept all considers (record any mob)</label>
 
   <details>
     <summary>Default list (<span id="covDefaultCount">0</span>)</summary>
@@ -55,7 +56,7 @@
 
     async function load(){
       const lists = await window.EQCM.getCovLists();
-      _cov = lists || { defaults: [], merged: [], additions: [], removals: [] };
+      _cov = lists || { defaults: [], merged: [], additions: [], removals: [], acceptAllConsiders: false };
       render();
     }
     function render(){
@@ -63,6 +64,7 @@
       byId('covDefaults').innerText = (_cov.defaults||[]).join('\n');
       byId('covMergedCount').innerText = String((_cov.merged||[]).length);
       byId('covMerged').innerText = (_cov.merged||[]).join('\n');
+      const chk = byId('acceptAllConsiders'); if (chk) chk.checked = !!_cov.acceptAllConsiders;
       renderBoxes();
     }
     function renderBoxes(){
@@ -117,11 +119,13 @@
       await refresh();
     }
     async function saveAndClose(){
-      await window.EQCM.setSettings({ covAdditions: _cov.additions||[], covRemovals: _cov.removals||[] });
+      await window.EQCM.setSettings({ covAdditions: _cov.additions||[], covRemovals: _cov.removals||[], acceptAllConsiders: !!byId('acceptAllConsiders').checked });
       window.close();
     }
+    byId('acceptAllConsiders').addEventListener('change', async () => {
+      try{ await window.EQCM.setSettings({ acceptAllConsiders: !!byId('acceptAllConsiders').checked }); await refresh(); } catch {}
+    });
     load();
   </script>
 </body>
 </html>
-

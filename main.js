@@ -41,8 +41,9 @@ function parseLogName(filePath){
 // ---- Favorites CSV helper ----
 function filterRowsByFavorites(rows){
   try {
+    const only = !!(state.settings && state.settings.favoritesOnly);
     const favs = (state.settings && state.settings.favorites) || [];
-    if (!favs.length) return rows || [];
+    if (!only || !favs.length) return rows || [];
     const set = new Set(favs.map(s => String(s).toLowerCase()));
     return (rows || []).filter(r => set.has(String(r && r[0] || '').toLowerCase()));
   } catch { return rows || []; }
@@ -74,6 +75,12 @@ function log(...args){
   try { fs.appendFileSync(LOG_FILE, line + '\n', 'utf8'); } catch {}
   console.log(line);
 }
+// Debug logging that can be toggled from settings (Advanced)
+function dlog(...args){
+  try{ ensureSettings(); if (!state.settings || !state.settings.debugLogs) return; }
+  catch{}
+  log(...args);
+}
 
 // ---------- defaults & state ----------
 const DEFAULT_SETTINGS = {
@@ -88,6 +95,7 @@ const DEFAULT_SETTINGS = {
   covList: [],
   acceptAllConsiders: false,
   strictUnstable: false,
+  debugLogs: false,
 
   logsDir: "",
   baseDir: "",
@@ -96,6 +104,7 @@ const DEFAULT_SETTINGS = {
   localSheetsEnabled: true,
   localSheetsDir: "",
   remoteSheetsEnabled: true,
+  // CoV Faction tab is driven by local CSV exactly (cleared and replaced on sync)
 
   // Backscan configuration
   backscanMaxMB: 0,             // 0 = full file; otherwise clamp 5–20 MB
@@ -400,6 +409,7 @@ function countRaidKitForCharacter(character){
 const RE_ZONE = /^\[(?<ts>[^\]]+)\]\s+You have entered (?<zone>.+?)\./i;
 const RE_CON  = new RegExp(String.raw`^\[(?<ts>[^\]]+)\]\s+(?<mob>.+?)\s+(?:regards you as an ally|looks upon you warmly|kindly considers you|judges you amiably|regards you indifferently|looks your way apprehensively|glowers at you dubiously|glares at you threateningly|scowls at you).*?$`, 'i');
 const RE_INVIS_ON  = /(You vanish\.|Someone fades away\.|You gather shadows about you\.|Someone steps into the shadows and disappears\.)/i;
+// Note: "You feel yourself starting to appear." is a transition and should still be treated as invis-on.
 const RE_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
 const RE_SELF_INVIS_ON  = /(You vanish\.|You gather shadows about you\.)/i;
 const RE_SELF_INVIS_OFF = /(You appear\.|Your shadows fade\.)/i;
@@ -443,6 +453,108 @@ function parseEqTimestamp(tsStr){
   return { utcISO: new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString(), localISO: dt.toLocaleString(), when: dt };
 }
 
+// ---------- CoV recompute (tail scan, bottom-first, skip invis) ----------
+function recalcCovFactionFromTail(){
+  try{
+    ensureSettings();
+    const logsDir = state.settings.logsDir;
+    if (!logsDir || !fs.existsSync(logsDir)) return;
+    const covSet = getCovSet();
+    const acceptAll = !!state.settings.acceptAllConsiders;
+    const preferScore = (a, b) => (a == null ? -1 : a) - (b == null ? -1 : b);
+    const byChar = {};
+    // Build mapping of character -> candidate log file (latest source if available)
+    const files = {};
+    Object.values(state.latestZonesByFile||{}).forEach(v => { if (v && v.character) files[v.character] = v.sourceFile; });
+    // Fallback: pick any eqlog_<Name>*.txt in logsDir for characters we know
+    const allLogs = fs.readdirSync(logsDir).filter(f => /^eqlog_.+?\.txt$/i.test(f));
+    function pickFileFor(char){
+      if (files[char] && fs.existsSync(files[char])) return files[char];
+      const re = new RegExp('^eqlog_'+char.replace(/[^A-Za-z0-9_-]/g,'.')+'.+?\.txt$','i');
+      const m = allLogs.find(f => re.test(f));
+      return m ? path.join(logsDir, m) : '';
+    }
+    // For each known character in inventory or zones
+    const chars = new Set([ ...Object.keys(state.inventory||{}), ...Object.keys(state.latestZones||{}), ...Object.values(state.latestZonesByFile||{}).map(v=>v.character||'') ]);
+    for (const char of Array.from(chars).filter(Boolean)){
+      const fp = pickFileFor(char);
+      if (!fp || !fs.existsSync(fp)) continue;
+      let buf = null;
+      try{
+        const st = fs.statSync(fp);
+        const max = 200*1024; // 200KB tail is plenty for recent considers
+        const fd = fs.openSync(fp,'r');
+        const size = st.size;
+        const start = Math.max(0, size - max);
+        const len = size - start;
+        const tmp = Buffer.alloc(len);
+        fs.readSync(fd, tmp, 0, len, start);
+        fs.closeSync(fd);
+        buf = tmp.toString('utf8');
+      }catch(e){ continue; }
+      if (!buf) continue;
+      const lines = buf.replace(/\r\n/g,'\n').split('\n');
+      let selfInvis = false;
+      let found = null; // { standing, score, mob, detectedUtcISO, detectedLocalISO }
+      for (let i=lines.length-1; i>=0; i--){
+        const line = lines[i];
+        if (!line) continue;
+        // Self invis markers
+        if (RE_SELF_INVIS_ON.test(line)) { selfInvis = true; continue; }
+        if (/You feel yourself starting to appear\./i.test(line)) { /* still invis */ continue; }
+        if (RE_SELF_INVIS_OFF.test(line)) { selfInvis = false; continue; }
+        const m = RE_CON.exec(line);
+        if (!m) continue;
+        const mob = String(m.groups && m.groups.mob || '').trim();
+        if (!acceptAll) {
+          const mobNorm = normalizeMobName(mob);
+          if (!covSet.has(mobNorm)){
+            let ok = false;
+            for (const name of covSet){ if (mobNorm.startsWith(name)) { ok = true; break; } }
+            if (!ok) continue;
+          }
+        }
+        // Determine standing
+        let standing=null, score=null;
+        for (const s of STANDINGS){ if (s.test.test(line)){ standing=s.key; score=s.score; break; } }
+        if (!standing) continue;
+        // Skip considers while invis is active
+        if (selfInvis) continue;
+        // Timestamps for output
+        const ts = String(m.groups && m.groups.ts || '').trim();
+        const when = parseEqTimestamp(ts);
+        // Bottom-first guarantees first stable hit is the best/latest by position; still prefer higher score if tied by position somehow
+        if (!found || (preferScore(score, found.score) > 0)){
+          found = { character: char, standing, score, mob, detectedUtcISO: when.utcISO, detectedLocalISO: when.localISO };
+          // Early exit if Ally: cannot be improved
+          if (score === 1450) break;
+        }
+      }
+      if (found){
+        byChar[char] = found;
+      }
+    }
+    // Commit to state.covFaction (do not downgrade existing better scores)
+    for (const [char, rec] of Object.entries(byChar)){
+      const prev = state.covFaction[char];
+      const recScore = (rec.score ?? 0);
+      const prevScore = (prev && prev.score != null) ? prev.score : -999999;
+      const recWhen = String(rec.detectedUtcISO || '');
+      const prevWhen = String((prev && prev.detectedUtcISO) || '');
+      const shouldUpdate = (!prev) || (recScore > prevScore) || (recScore === prevScore && recWhen >= prevWhen);
+      if (shouldUpdate){
+        state.covFaction[char] = {
+          standing: rec.standing,
+          standingDisplay: rec.standing,
+          score: rec.score,
+          mob: rec.mob,
+          detectedUtcISO: rec.detectedUtcISO,
+          detectedLocalISO: rec.detectedLocalISO
+        };
+      }
+    }
+  }catch(e){ log('recalcCovFactionFromTail error', e.message); }
+}
 // ---------- CSV ----------
 function writeCsv(filePath, header, rows){
   // Returns true if file content changed
@@ -568,19 +680,39 @@ async function maybePostWebhook(){
   const secret = (state.settings.appsScriptSecret||'').trim();
 
   // Prefer per-file rows so characters on multiple servers don't collide
-  const zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+  let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
-  const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
+  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
     const extras = buildRaidKitExtrasForCharacter(character);
     const exMap = {}; extras.forEach(e => exMap[e.header]=e.value);
     return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
   });
-  const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+  let invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
-  const payload = { secret, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
+  // Apply favoritesOnly filtering to webhook payload for parity with CSV
+  try{
+    const only = !!(state.settings && state.settings.favoritesOnly);
+    const favs = (state.settings && state.settings.favorites) || [];
+    if (only && favs.length){
+      const set = new Set(favs.map(s => String(s).toLowerCase()));
+      const keep = (c) => set.has(String(c||'').toLowerCase());
+      zoneRows = zoneRows.filter(r => keep(r.character));
+      covRows  = covRows.filter(r => keep(r.character));
+      invRows  = invRows.filter(r => keep(r.character));
+      invDetails = invDetails.filter(r => keep(r.character));
+      // To keep the sheet exactly matching the filtered CSV, do a replace when favoritesOnly is on
+      try { await sendReplaceAllWebhook({}); } catch {}
+      return;
+    }
+  }catch{}
+
+  // Optionally drive CoV Faction from CSV exactly; when enabled, do not upsert factions JSON
+  // Always drive CoV Faction from CSV; do not upsert JSON factions
+  const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
+  const payload = { secret, upserts };
   try {
     const res = await postJson(url, payload);
     const debugWebhook = String(process.env.DEBUG_WEBHOOK || '').toLowerCase();
@@ -590,8 +722,35 @@ async function maybePostWebhook(){
       const bodyPreview = (res.body || '').slice(0, 180);
       log('Webhook response', res.status, bodyPreview);
     }
+    // No CSV push here; handled unconditionally in scan cycle to ensure sheet matches CSV every interval
   }
   catch(e){ log('Webhook error', e.message); }
+}
+
+// Replace CoV Faction sheet with the exact contents of local CSV
+async function sendReplaceFactionsCsvFromLocal(){
+  ensureSettings();
+  if (state.settings.remoteSheetsEnabled === false) { log('replaceFactionsCsv skipped: remoteSheetsEnabled=false'); return; }
+  const url = (state.settings.appsScriptUrl||'').trim();
+  if (!url || !isLikelyAppsScriptExec(url)) { log('replaceFactionsCsv aborted: invalid Apps Script URL'); throw new Error('Invalid Apps Script URL'); }
+  const secret = (state.settings.appsScriptSecret||'').trim();
+  // Determine CSV path from localSheetsDir (or default SHEETS_DIR)
+  let dir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
+  let filePath = path.join(dir, 'CoV Faction.csv');
+  if (!fs.existsSync(filePath)){
+    // Fallback to dev relative path
+    const alt = path.join(__dirname, 'sheets-out', 'CoV Faction.csv');
+    if (fs.existsSync(alt)) filePath = alt;
+  }
+  if (!fs.existsSync(filePath)) { const msg = 'CoV Faction.csv not found in local CSV folder'; log(msg, dir); throw new Error(msg + ': ' + dir); }
+  const csv = fs.readFileSync(filePath, 'utf8');
+  try{
+    dlog('replaceFactionsCsv path', filePath);
+    const res = await postJson(url, { secret, action: 'replaceFactionsCsv', csv });
+    log('ReplaceFactionsCsv response', res.status, (res.body||'').slice(0, 180));
+    if (!(res.status >= 200 && res.status < 300)) throw new Error('HTTP ' + res.status);
+    return { ok: true };
+  }catch(e){ log('ReplaceFactionsCsv error', e && e.message || e); throw e; }
 }
 // Extra raid kit beyond fixed columns
 function buildRaidKitExtrasForCharacter(character){
@@ -636,9 +795,24 @@ async function sendReplaceAllWebhook(opts){
   });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
+  // Apply favoritesOnly filtering for ReplaceAll as well so sheet matches CSV exactly
+  try{
+    const only = !!(state.settings && state.settings.favoritesOnly);
+    const favs = (state.settings && state.settings.favorites) || [];
+    if (only && favs.length){
+      const set = new Set(favs.map(s => String(s).toLowerCase()));
+      const keep = (c) => set.has(String(c||'').toLowerCase());
+      zoneRows = zoneRows.filter(r => keep(r.character));
+      covRows  = covRows.filter(r => keep(r.character));
+      invRows  = invRows.filter(r => keep(r.character));
+      invDetails = invDetails.filter(r => keep(r.character));
+    }
+  }catch{}
+
   const enabledFixed = buildEnabledFixedColumns();
   const meta = { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) };
-  const upserts = { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails };
+  // Always drive CoV Faction from CSV; do not include JSON factions in ReplaceAll
+  const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
   const payload = { secret, action: 'replaceAll', meta, upserts };
 
   // Debounce: compute digest of what would be sent (excluding secret)
@@ -663,6 +837,8 @@ async function sendReplaceAllWebhook(opts){
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
     if (res.status >= 200 && res.status < 300 && payload.__digest){ state.lastReplaceAllDigest = payload.__digest; saveState(); }
+    // Always follow ReplaceAll with exact CSV replace for CoV Faction
+    try { await sendReplaceFactionsCsvFromLocal(); } catch(e){ log('factionsFromCsv replaceAll follow-up error', e && e.message || e); }
   }catch(e){
     log('ReplaceAll error', e.message);
   }
@@ -953,17 +1129,17 @@ async function scanLogs(){
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ` (combat; prev=${prev.standing})` : ' (combat)';
                 state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Combat-biased /con, applied mob fallback', char, mob);
+                dlog('Combat-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ' (combat; prev=' + prev.standing + ')' : ' (combat)';
                 state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
-                log('Combat-biased /con, applied char fallback', char, mob);
+                dlog('Combat-biased /con, applied char fallback', char, mob);
               } else {
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ' (combat?; prev=' + prev.standing + ')' : ' (combat?)';
                 state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Combat-biased /con, accepted as baseline', char, mob);
+                dlog('Combat-biased /con, accepted as baseline', char, mob);
               }
             }
             else if (preferFallbackForInvis || unstableInvis){
@@ -971,17 +1147,17 @@ async function scanLogs(){
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ` (invis; prev=${prev.standing})` : ' (invis)';
                 state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Invis-biased /con, applied mob fallback', char, mob);
+                dlog('Invis-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ' (invis; prev=' + prev.standing + ')' : ' (invis)';
                 state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
-                log('Invis-biased /con, applied char fallback', char, mob);
+                dlog('Invis-biased /con, applied char fallback', char, mob);
               } else {
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ' (invis?; prev=' + prev.standing + ')' : ' (invis?)';
                 state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
-                log('Invis-biased /con, accepted as baseline', char, mob);
+                dlog('Invis-biased /con, accepted as baseline', char, mob);
               }
             }
             else {
@@ -1040,9 +1216,13 @@ async function doScanCycle(){
   try{
     await scanLogs();
     await scanInventory();
+    // Recompute CoV standings bottom-first and skip invis considers
+    try { recalcCovFactionFromTail(); } catch {}
     saveState();
     const changed = await maybeWriteLocalSheets();
     if (changed) await maybePostWebhook();
+    // Always enforce CoV Faction from CSV each interval so manual CSV edits are reflected
+    try { await sendReplaceFactionsCsvFromLocal(); } catch {}
   } catch(e){
     log('[LOG] Scan cycle error:', e.message);
   }
@@ -1073,7 +1253,7 @@ const zRowsOut = filterRowsByFavorites(zRows);
   changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
   const fHead = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
-  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'').includes('fallback')? 'fallback' : (v.standingDisplay||'').includes('uncertain')? 'uncertain' : '' ]);
+  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'') ]);
 const fRowsOut = filterRowsByFavorites(fRows);
   changed = writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut) || changed;
 
@@ -1115,7 +1295,7 @@ changed = writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut) || change
 }
 
 // ---------- UI ----------
-let tray = null, settingsWin = null;
+let tray = null, settingsWin = null, favoritesWin = null;
 function buildTrayTooltip(){
   ensureSettings();
   const tz = state.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -1134,6 +1314,7 @@ function buildMenu(){
     { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
+    { label: 'Favorites…', click: openFavoritesWindow },
     { label: 'Advanced…', click: openAdvancedWindow },
     { type: 'separator' },
     { label: 'Getting Started', click: openDocsWindow },
@@ -1162,6 +1343,14 @@ function openSettingsWindow(){
   settingsWin.loadFile(path.join(__dirname, 'settings.html'));
   makeHidable(settingsWin);
   settingsWin.on('closed', () => settingsWin = null);
+}
+function openFavoritesWindow(){
+  if (favoritesWin && !favoritesWin.isDestroyed()) { favoritesWin.show(); favoritesWin.focus(); return; }
+  favoritesWin = new BrowserWindow({ width: 700, height: 640, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+  favoritesWin.setMenu(null);
+  favoritesWin.loadFile(path.join(__dirname, 'favorites.html'));
+  makeHidable(favoritesWin);
+  favoritesWin.on('closed', () => favoritesWin = null);
 }
 function openDocsWindow(){
   const win = new BrowserWindow({ width: 900, height: 740, resizable: true, icon: getWindowIconImage() });
@@ -1255,6 +1444,14 @@ function getTrayIconImage(){
   return img;
 }
 function getWindowIconImage(){
+  // Prefer tray-256.png explicitly to match tray art
+  try {
+    const tray256 = path.join(__dirname, 'assets', 'tray-256.png');
+    if (fs.existsSync(tray256)){
+      const img = nativeImage.createFromPath(tray256);
+      if (img && !img.isEmpty()) return img;
+    }
+  } catch {}
   const svgPath = path.join(__dirname, 'assets', 'simple-xp-shield.svg');
   const icoPath = path.join(__dirname, 'assets', 'simple-xp-shield.ico');
   const pngPath = path.join(__dirname, 'assets', 'tray.png');
@@ -1423,7 +1620,8 @@ ipcMain.handle('cov:getLists', async () => {
       defaults,
       merged: Array.from(mergedSet),
       additions: Array.from((state.settings.covAdditions||[])),
-      removals: Array.from((state.settings.covRemovals||[]))
+      removals: Array.from((state.settings.covRemovals||[])),
+      acceptAllConsiders: !!state.settings.acceptAllConsiders
     };
   } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
 });
@@ -1433,6 +1631,10 @@ ipcMain.handle('advanced:forceBackscan', async () => {
 });
 ipcMain.handle('advanced:replaceAll', async (_evt, opts) => {
   try { await sendReplaceAllWebhook(opts||{}); return { ok: true }; }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+});
+ipcMain.handle('advanced:replaceFactionsCsv', async () => {
+  try { await sendReplaceFactionsCsvFromLocal(); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
@@ -1462,3 +1664,13 @@ app.whenReady().then(() => {
 
 process.on('unhandledRejection', (err) => { log('Unhandled rejection', err && err.stack ? err.stack : String(err)); });
 process.on('uncaughtException', (err) => { log('Uncaught exception', err && err.stack ? err.stack : String(err)); });
+// Compute discovered character names from current state
+function getDiscoveredCharacters(){
+  try{
+    const names = new Set();
+    Object.keys(state.inventory||{}).forEach(n => names.add(String(n)));
+    Object.values(state.latestZonesByFile||{}).forEach(v => { if (v && v.character) names.add(String(v.character)); });
+    Object.keys(state.latestZones||{}).forEach(n => names.add(String(n)));
+    return Array.from(names).sort();
+  }catch{ return []; }
+}

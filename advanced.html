@@ -22,13 +22,19 @@
     <label>Backscan retry minutes</label>
     <input id="backscanRetryMinutes" type="number" min="0" step="1" placeholder="0 = disable periodic retry"/>
     <div class="small">Retry backscan for files with no zone every N minutes.</div>
+
+    <label>Enable debug console logs</label>
+    <input id="debugLogs" type="checkbox"/>
+    <div class="small">When enabled, verbose /con bias messages and other debug output print to the console and log file.</div>
   </div>
 
   <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
+    <p class="small" style="margin:0 0 6px 0">Note: CoV Faction is always driven from the local CSV. The app clears and rewrites that tab on each sync; use this to run it immediately.</p>
     <button onclick="saveAndClose()">Save & Close</button>
     <button onclick="forceBackscan()">Force backscan (missing zones)</button>
     <button onclick="replaceAll()">Full refresh to sheet</button>
     <button onclick="forceReplaceAll()" title="Bypass change detection and push all tabs now">Force Replace All</button>
+    <button onclick="replaceFactionsCsv()" title="Clear and write CoV Faction from local CSV">Replace CoV Faction from CSV</button>
   </div>
 
   <script>
@@ -37,11 +43,13 @@
       const { settings } = await window.EQCM.getSettings();
       byId('backscanMaxMB').value = String(settings.backscanMaxMB ?? 0);
       byId('backscanRetryMinutes').value = String(settings.backscanRetryMinutes ?? 10);
+      byId('debugLogs').checked = !!settings.debugLogs;
     }
     async function save(){
       const payload = {
         backscanMaxMB: Number(byId('backscanMaxMB').value),
-        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value)
+        backscanRetryMinutes: Number(byId('backscanRetryMinutes').value),
+        debugLogs: !!byId('debugLogs').checked
       };
       await window.EQCM.setSettings(payload);
     }
@@ -59,6 +67,11 @@
       if (!confirm('Force Replace All? This ignores change detection and pushes all tabs now.')) return;
       const res = await window.EQCM.replaceAllForce();
       if (!res || res.ok !== true) alert('Force Replace All error: ' + (res && res.error || 'unknown'));
+    }
+    async function replaceFactionsCsv(){
+      if (!confirm('Replace CoV Faction with the exact contents of local CSV? This clears the sheet.')) return;
+      const res = await window.EQCM.replaceFactionsCsvFromLocal();
+      if (!res || res.ok !== true) alert('Replace Factions CSV error: ' + (res && res.error || 'unknown'));
     }
     load();
   </script>
