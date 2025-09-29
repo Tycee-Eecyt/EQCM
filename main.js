@@ -686,6 +686,9 @@ async function maybePostWebhook(){
       covRows  = covRows.filter(r => keep(r.character));
       invRows  = invRows.filter(r => keep(r.character));
       invDetails = invDetails.filter(r => keep(r.character));
+      // To keep the sheet exactly matching the filtered CSV, do a replace when favoritesOnly is on
+      try { await sendReplaceAllWebhook({}); } catch {}
+      return;
     }
   }catch{}
 
@@ -744,6 +747,20 @@ async function sendReplaceAllWebhook(opts){
     return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
   });
   const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+
+  // Apply favoritesOnly filtering for ReplaceAll as well so sheet matches CSV exactly
+  try{
+    const only = !!(state.settings && state.settings.favoritesOnly);
+    const favs = (state.settings && state.settings.favorites) || [];
+    if (only && favs.length){
+      const set = new Set(favs.map(s => String(s).toLowerCase()));
+      const keep = (c) => set.has(String(c||'').toLowerCase());
+      zoneRows = zoneRows.filter(r => keep(r.character));
+      covRows  = covRows.filter(r => keep(r.character));
+      invRows  = invRows.filter(r => keep(r.character));
+      invDetails = invDetails.filter(r => keep(r.character));
+    }
+  }catch{}
 
   const enabledFixed = buildEnabledFixedColumns();
   const meta = { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) };
