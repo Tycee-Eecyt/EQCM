@@ -663,17 +663,31 @@ async function maybePostWebhook(){
   const secret = (state.settings.appsScriptSecret||'').trim();
 
   // Prefer per-file rows so characters on multiple servers don't collide
-  const zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+  let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
-  const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
+  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
     const extras = buildRaidKitExtrasForCharacter(character);
     const exMap = {}; extras.forEach(e => exMap[e.header]=e.value);
     return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
   });
-  const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+  let invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+
+  // Apply favoritesOnly filtering to webhook payload for parity with CSV
+  try{
+    const only = !!(state.settings && state.settings.favoritesOnly);
+    const favs = (state.settings && state.settings.favorites) || [];
+    if (only && favs.length){
+      const set = new Set(favs.map(s => String(s).toLowerCase()));
+      const keep = (c) => set.has(String(c||'').toLowerCase());
+      zoneRows = zoneRows.filter(r => keep(r.character));
+      covRows  = covRows.filter(r => keep(r.character));
+      invRows  = invRows.filter(r => keep(r.character));
+      invDetails = invDetails.filter(r => keep(r.character));
+    }
+  }catch{}
 
   const payload = { secret, upserts: { zones: zoneRows, factions: covRows, inventory: invRows, inventoryDetails: invDetails } };
   try {
@@ -1170,7 +1184,7 @@ const zRowsOut = filterRowsByFavorites(zRows);
   changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
   const fHead = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
-  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'').includes('fallback')? 'fallback' : (v.standingDisplay||'').includes('uncertain')? 'uncertain' : '' ]);
+  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'') ]);
 const fRowsOut = filterRowsByFavorites(fRows);
   changed = writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut) || changed;
 
