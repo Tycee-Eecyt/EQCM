@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>EQ Character Manager — Favorites</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    label { display:block; margin-top:10px; font-weight:600; }
+    input[type="text"] { width: 100%; padding: 8px; }
+    button { padding:8px 12px; }
+    .row { display:flex; gap:12px; align-items:center; }
+    .listbox{border:1px solid #ddd;padding:8px;max-height:360px;overflow:auto}
+    .small { font-size: 12px; color:#555; }
+  </style>
+</head>
+<body>
+  <h2>Favorite Characters</h2>
+
+  <div class="row" style="margin-bottom:8px">
+    <label style="margin:0"><input id="favoritesOnly" type="checkbox"/> Favorites only</label>
+    <input id="favInput" type="text" placeholder="Add character name and press Enter" onkeydown="if(event.key==='Enter'){addFavorite()}"/>
+    <button onclick="addFavorite()">Add</button>
+  </div>
+
+  <div id="favList" class="listbox"></div>
+
+  <div style="margin-top:12px">
+    <button onclick="saveAndClose()">Save & Close</button>
+  </div>
+
+  <p class="small" style="margin-top:10px">Checked names are included in Favorites. When "Favorites only" is on, CSV/webhook output is filtered to these characters.</p>
+
+  <script>
+    const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
+    function renderFavs(favs, discovered){
+      const box = byId('favList'); box.innerHTML='';
+      const set = new Set((favs||[]).map(s=>String(s)));
+      const names = Array.from(new Set([...(discovered||[]), ...Array.from(set)])).sort();
+      names.forEach(n => {
+        const row = document.createElement('div');
+        const id = 'fav_'+n;
+        row.innerHTML = `<label style="display:flex; align-items:center; gap:8px"><input type="checkbox" id="${id}"> <span>${n}</span></label>`;
+        box.appendChild(row);
+        const cb = document.getElementById(id); if (cb) cb.checked = set.has(n);
+      });
+    }
+    function addFavorite(){
+      const n = (byId('favInput').value||'').trim(); if(!n) return;
+      const box = byId('favList');
+      const exists = box.innerText.split('\n').some(s=>s.trim()===n);
+      if(!exists){
+        const row=document.createElement('div'); const id='fav_'+n;
+        row.innerHTML=`<label style="display:flex; align-items:center; gap:8px"><input type="checkbox" id="${id}" checked> <span>${n}</span></label>`;
+        box.appendChild(row);
+      }
+      byId('favInput').value='';
+    }
+    async function load(){
+      const { settings, characters } = await window.EQCM.getSettings();
+      byId('favoritesOnly').checked = !!settings.favoritesOnly;
+      renderFavs(settings.favorites||[], characters||[]);
+    }
+    async function save(){
+      const payload = {
+        favoritesOnly: byId('favoritesOnly').checked,
+        favorites: Array.from(byId('favList').querySelectorAll('input[type="checkbox"]'))
+          .filter(cb => cb.checked)
+          .map(cb => cb.id.replace(/^fav_/, ''))
+      };
+      await window.EQCM.setSettings(payload);
+    }
+    async function saveAndClose(){ await save(); window.close(); }
+    load();
+  </script>
+</body>
+</html>
+

@@ -23,10 +23,26 @@ function doPost(e){
       replaceAll_(ss, body);
       return respond_({ ok: true, mode: 'replaceAll' });
     }
+    // Replace CoV Faction tab with EXACT CSV contents
+    if (body.action === 'replaceFactionsCsv'){
+      const csv = String(body.csv || '');
+      if (!csv) return respond_({ ok:false, error: 'Missing csv' }, 400);
+      const res = replaceFactionsCsv_(ss, csv);
+      return respond_({ ok: true, mode: 'replaceFactionsCsv', rows: res.rows, cols: res.cols });
+    }
+    // Block JSON writes to factions: accept only CSV action above
+    if (body.action === 'replaceFactions'){
+      return respond_({ ok:false, error: 'Factions JSON disabled; use action=replaceFactionsCsv' }, 403);
+    }
+    // Optional bulk JSON import for other tabs (faster path). CoV Faction is guarded and skipped here.
+    if (body.action === 'jsonImport'){
+      const res = jsonImport_(ss, body);
+      return respond_(Object.assign({ ok:true, mode:'jsonImport' }, res));
+    }
 
     const upserts = body.upserts || {};
     if (upserts.zones)    upsertZones_(ss, upserts.zones);
-    if (upserts.factions) upsertFactions_(ss, upserts.factions);
+    // Factions JSON is ignored by design; only CSV is accepted to modify the CoV Faction tab
     if (upserts.inventory) upsertInventorySummary_(ss, upserts.inventory, body.meta || {});
     if (upserts.inventoryDetails) upsertInventoryDetails_(ss, upserts.inventoryDetails);
     return respond_({ ok: true });
@@ -115,6 +131,19 @@ function replaceFactions_(ss, rows){
   writeAllRows_(sh, header, data);
 }
 
+// Replace CoV Faction with the EXACT contents of a CSV string
+function replaceFactionsCsv_(ss, csvText){
+  const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
+  const rows = Utilities.parseCsv(csvText || '');
+  // Clear and write exactly what the CSV contains (including header row as-is)
+  sh.clearContents();
+  if (rows && rows.length){
+    sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);
+    return { rows: rows.length, cols: rows[0].length };
+  }
+  return { rows: 0, cols: 0 };
+}
+
 function upsertInventorySummary_(ss, rows, meta){
   const fixedHeaders = (meta && meta.invFixedHeaders && meta.invFixedHeaders.length) ? meta.invFixedHeaders : [
     'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
@@ -198,7 +227,7 @@ function replaceInventoryDetails_(ss, rows){
 function replaceAll_(ss, body){
   const up = body.upserts || body || {};
   if (up.zones)    replaceZones_(ss, up.zones);
-  if (up.factions) replaceFactions_(ss, up.factions);
+  // Factions JSON is ignored; use replaceFactionsCsv action instead
   if (up.inventory) replaceInventorySummary_(ss, up.inventory, body.meta || {});
   if (up.inventoryDetails) replaceInventoryDetails_(ss, up.inventoryDetails);
 }
@@ -234,5 +263,31 @@ function pushInventorySheet_(ss, body){
   sh.autoResizeColumns(1, header.length);
 
   return { ok:true, sheet: name };
+}
+
+// Bulk JSON import for non-faction tabs. Each tab: { sheet(name), header:[], rows:[[]], mode:'replace'|'append' }
+// CoV Faction sheet is intentionally skipped here to prevent JSON-based overwrites; use replaceFactionsCsv.
+function jsonImport_(ss, body){
+  const tabs = Array.isArray(body && body.tabs) ? body.tabs : [];
+  let imported = 0;
+  tabs.forEach(tab => {
+    try{
+      const name = String(tab.sheet || tab.name || '').trim();
+      if (!name) return;
+      if (name === CONFIG.FACTION_SHEET) return; // guard
+      const header = Array.isArray(tab.header) ? tab.header : [];
+      const rows = Array.isArray(tab.rows) ? tab.rows : [];
+      const sh = getOrMakeSheet_(ss, name);
+      const mode = String(tab.mode||'replace').toLowerCase();
+      if (mode === 'append'){
+        ensureHeader_(sh, header);
+        if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,header.length).setValues(rows);
+      } else {
+        writeAllRows_(sh, header, rows);
+      }
+      imported++;
+    } catch(err){}
+  });
+  return { imported };
 }
 

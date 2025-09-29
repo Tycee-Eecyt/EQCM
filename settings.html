@@ -14,7 +14,7 @@
     .grid { display:grid; grid-template-columns: 200px 1fr auto; gap: 8px 12px; align-items:center; }
     .grid label { margin:0; }
   </style>
-<style>.listbox{border:1px solid #ddd;padding:8px;max-height:140px;overflow:auto}</style></head>
+</head>
 <body>
   <h2>EQ Character Manager — Settings</h2>
   <div class="grid">
@@ -29,8 +29,9 @@
     <label>Local CSV output</label>
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
     <button onclick="pick('localSheetsDir')">Browse…</button>
-
-    
+    <label></label>
+    <div class="small">CoV Faction tab is always synced from <b>CoV Faction.csv</b> in this folder. If blank, the app falls back to its <b>sheets-out</b> folder.</div>
+    <div></div>
 
     <label>Scan interval</label>
     <select id="scanIntervalSec">
@@ -55,51 +56,25 @@
     <div></div>
 
     <label>Spreadsheet URL</label>
-    <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/<ID>/edit"/>
+    <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit"/>
     <button onclick="openSheet()">Open</button>
   </div>
-
-  <h3 style="margin-top:16px">Favorites</h3>
-  <div class="row" style="align-items:center; gap:12px; margin-bottom:8px">
-    <label style="margin:0"><input id="favoritesOnly" type="checkbox"/> Favorites only</label>
-    <input id="favInput" type="text" placeholder="Add character name and press Enter" onkeydown="if(event.key==='Enter'){addFavorite()}"/>
-    <button onclick="addFavorite()">Add</button>
-  </div>
-  <div id="favList" class="listbox"></div>
 
   <div style="margin-top:16px">
     <button onclick="saveAndClose()">Save & Close</button>
   </div>
 
   <p class="small" style="margin-top:12px">
-    Use the tray menu → <b>Push inventory to sheet</b> to create a new tab like the screenshot, one per character.
+    Use the tray menu → <b>Favorites…</b> to manage favorite characters and filtering.
   </p>
 
-  
-
   <script>
-    const els = {};
-    function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
-    function renderFavs(favs, discovered){
-      const box = byId('favList'); box.innerHTML='';
-      const set = new Set((favs||[]).map(s=>String(s)));
-      const names = Array.from(new Set([...(discovered||[]), ...Array.from(set)])).sort();
-      names.forEach(n => {
-        const row = document.createElement('div');
-        const id = 'fav_'+n;
-        row.innerHTML = `<label style="display:flex; align-items:center; gap:8px"><input type="checkbox" id="${id}"> <span>${n}</span></label>`;
-        box.appendChild(row);
-        const cb = document.getElementById(id); if (cb) cb.checked = set.has(n);
-      });
-    }
-    function addFavorite(){ const n = (byId('favInput').value||'').trim(); if(!n) return; const box = byId('favList'); const exists = box.innerText.split('\n').some(s=>s.trim()===n); if(!exists){ const row=document.createElement('div'); const id='fav_'+n; row.innerHTML=`<label style="display:flex; align-items:center; gap:8px"><input type="checkbox" id="${id}" checked> <span>${n}</span></label>`; box.appendChild(row);} byId('favInput').value=''; }
+    const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
     async function load(){
-      const { settings, characters } = await window.EQCM.getSettings();
+      const { settings } = await window.EQCM.getSettings();
       ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
       ['localSheetsEnabled','remoteSheetsEnabled'].forEach(k => byId(k).checked = !!settings[k]);
       byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
-      byId('favoritesOnly').checked = !!settings.favoritesOnly;
-      renderFavs(settings.favorites||[], characters||[]);
     }
     async function save(){
       const payload = {
@@ -111,11 +86,7 @@
         sheetUrl: byId('sheetUrl').value.trim(),
         scanIntervalSec: Number(byId('scanIntervalSec').value),
         localSheetsEnabled: byId('localSheetsEnabled').checked,
-        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked,
-        favoritesOnly: byId('favoritesOnly').checked,
-        favorites: Array.from(byId('favList').querySelectorAll('input[type="checkbox"]'))
-          .filter(cb => cb.checked)
-          .map(cb => cb.id.replace(/^fav_/, ''))
+        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked
       };
       await window.EQCM.setSettings(payload);
     }
