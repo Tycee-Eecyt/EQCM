@@ -1,6 +1,6 @@
 {
   "name": "eq-character-manager",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "EQ Character Manager \u2014 system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
   "main": "main.js",
   "author": "Tyler A",
@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "dist": "electron-builder --win",
+    "dist": "node scripts/generate-icon.js && electron-builder --win",
     "test": "node tests/raidkit-core.test.js" 
   },
   "devDependencies": {
