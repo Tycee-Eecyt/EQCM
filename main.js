@@ -1376,6 +1376,27 @@ function openRaidKitWindow(){
   makeHidable(win);
 }
 
+// ---------- Installer / Onboarding ----------
+function needsOnboarding(){
+  try{
+    ensureSettings();
+    if (state.settings.onboardingCompleted) return false;
+    const logsOk = !!(state.settings.logsDir && fs.existsSync(state.settings.logsDir));
+    const baseOk = !!(state.settings.baseDir && fs.existsSync(state.settings.baseDir));
+    const sheetOk = !!String(state.settings.sheetUrl||'').trim();
+    const execOk = isLikelyAppsScriptExec(String(state.settings.appsScriptUrl||'').trim());
+    return !(sheetOk && execOk && logsOk && baseOk);
+  }catch{ return true; }
+}
+function openInstallerWindow(){
+  try{
+    const win = new BrowserWindow({ width: 880, height: 720, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+    win.setMenu(null);
+    win.loadFile(path.join(__dirname, 'installer.html'));
+    makeHidable(win);
+  }catch(e){ log('openInstallerWindow error', e && e.message || e); }
+}
+
 // ---------- Icon helpers (SVG rasterize with fallback) ----------
 function tryCreateImageFromSvg(svgPath){
   try {
@@ -1659,6 +1680,7 @@ app.whenReady().then(() => {
   try { tray.on('click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   try { tray.on('right-click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   rebuildTray();
+  try { if (needsOnboarding()) openInstallerWindow(); } catch {}
   startScanning();
 });
 
