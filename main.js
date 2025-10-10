@@ -127,6 +127,8 @@ let state = {
   latestZonesByFile: {},   // filePath -> { character, zone, detectedUtcISO, detectedLocalISO, sourceFile }
   covFaction: {},          // char -> { standing, standingDisplay, score, mob, detectedUtcISO, detectedLocalISO }
   inventory: {},           // char -> { filePath, fileCreated, fileModified, items[] }
+  // Track last successfully pushed zone timestamp per source log file (ISO string)
+  lastPushedZones: {},     // sourceFile -> last UTC ISO sent to Google Sheets
   settings: {}
 };
 
@@ -683,6 +685,20 @@ async function maybePostWebhook(){
   let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
+  // Guard: only upsert if this zone timestamp is newer than what we last pushed to the sheet for that source
+  try{
+    const last = (state.lastPushedZones && typeof state.lastPushedZones === 'object') ? state.lastPushedZones : {};
+    zoneRows = zoneRows.filter(r => {
+      const src = String(r.source||'').trim();
+      const when = String(r.utc||'').trim();
+      if (!src || !when) return false; // skip incomplete rows
+      const prev = String(last[src]||'');
+      return !prev || when > prev;
+    });
+    if (!zoneRows.length){
+      // Nothing newer to push; still allow inventory upserts below
+    }
+  } catch {}
   let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
   let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
@@ -721,6 +737,19 @@ async function maybePostWebhook(){
     if (!is2xx || debugOn) {
       const bodyPreview = (res.body || '').slice(0, 180);
       log('Webhook response', res.status, bodyPreview);
+    }
+    if (is2xx && upserts && Array.isArray(upserts.zones) && upserts.zones.length){
+      try{
+        if (!state.lastPushedZones || typeof state.lastPushedZones !== 'object') state.lastPushedZones = {};
+        upserts.zones.forEach(r => {
+          const src = String(r.source||'').trim();
+          const when = String(r.utc||'').trim();
+          if (!src || !when) return;
+          const prev = String(state.lastPushedZones[src]||'');
+          if (!prev || when > prev) state.lastPushedZones[src] = when;
+        });
+        saveState();
+      } catch {}
     }
     // No CSV push here; handled unconditionally in scan cycle to ensure sheet matches CSV every interval
   }
@@ -836,7 +865,21 @@ async function sendReplaceAllWebhook(opts){
   try{
     const res = await postJson(url, payload);
     log('ReplaceAll response', res.status, (res.body||'').slice(0, 180));
-    if (res.status >= 200 && res.status < 300 && payload.__digest){ state.lastReplaceAllDigest = payload.__digest; saveState(); }
+    if (res.status >= 200 && res.status < 300){
+      if (payload.__digest) state.lastReplaceAllDigest = payload.__digest;
+      try{
+        // Update lastPushedZones for all zone rows included in replaceAll
+        if (!state.lastPushedZones || typeof state.lastPushedZones !== 'object') state.lastPushedZones = {};
+        (upserts.zones||[]).forEach(r => {
+          const src = String(r.source||'').trim();
+          const when = String(r.utc||'').trim();
+          if (!src || !when) return;
+          const prev = String(state.lastPushedZones[src]||'');
+          if (!prev || when > prev) state.lastPushedZones[src] = when;
+        });
+      } catch {}
+      saveState();
+    }
     // Always follow ReplaceAll with exact CSV replace for CoV Faction
     try { await sendReplaceFactionsCsvFromLocal(); } catch(e){ log('factionsFromCsv replaceAll follow-up error', e && e.message || e); }
   }catch(e){
