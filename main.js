@@ -21,6 +21,10 @@ if (typeof getLogId !== 'function') {
 
 // EQ Character Manager — v1.6.0 — Author: Tyler A
 const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme } = require('electron');
+// Optional auto-update (electron-updater)
+let autoUpdater = null;
+try { autoUpdater = require('electron-updater').autoUpdater; }
+catch {}
 const fs = require('fs');
 const path = require('path');
 
@@ -1354,6 +1358,7 @@ function buildMenu(){
   const scanSub = { label: 'Scan interval', submenu: scanChoices.map(sec => ({ label: `${sec}s${(state.settings.scanIntervalSec===sec) ? ' ✓':''}`, click: () => { state.settings.scanIntervalSec = sec; saveSettings(); restartScanning(); rebuildTray(); } })) };
   return Menu.buildFromTemplate([
     buildPushInventorySubmenu(),
+    { label: 'Check for updates…', click: () => { try { if (autoUpdater) autoUpdater.checkForUpdates(); else shell.openExternal('https://github.com/TylerGeorgeAlexander/EQCM/releases'); } catch {} } },
     { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
@@ -1417,6 +1422,54 @@ function openRaidKitWindow(){
   win.setMenu(null);
   win.loadFile(path.join(__dirname, 'raider-kit.html'));
   makeHidable(win);
+}
+
+// ---------- Auto Updates ----------
+function setupAutoUpdates(){
+  try{
+    if (!autoUpdater) return;
+    // Basic listeners for visibility + logging
+    autoUpdater.on('checking-for-update', () => log('AutoUpdate checking for update'));
+    autoUpdater.on('update-available', (info) => log('AutoUpdate update available', info && (info.version||'')));
+    autoUpdater.on('update-not-available', () => log('AutoUpdate no update available'));
+    autoUpdater.on('error', (err) => log('AutoUpdate error', err && err.message || String(err)));
+    autoUpdater.on('download-progress', (p) => {
+      try{ if (p && typeof p.percent === 'number') dlog('AutoUpdate progress', Math.round(p.percent) + '%'); } catch{}
+    });
+    autoUpdater.on('update-downloaded', async (info) => {
+      log('AutoUpdate update downloaded', info && (info.version||''));
+      try{
+        const res = await dialog.showMessageBox({
+          type: 'question', buttons: ['Restart Now','Later'], defaultId: 0, cancelId: 1,
+          title: 'Update Ready', message: 'An update has been downloaded. Restart now to apply it?'
+        });
+        if (res.response === 0) {
+          setImmediate(() => { try { autoUpdater.quitAndInstall(); } catch {} });
+        }
+      }catch{}
+    });
+  }catch{}
+}
+
+// ---------- Installer / Onboarding ----------
+function needsOnboarding(){
+  try{
+    ensureSettings();
+    if (state.settings.onboardingCompleted) return false;
+    const logsOk = !!(state.settings.logsDir && fs.existsSync(state.settings.logsDir));
+    const baseOk = !!(state.settings.baseDir && fs.existsSync(state.settings.baseDir));
+    const sheetOk = !!String(state.settings.sheetUrl||'').trim();
+    const execOk = isLikelyAppsScriptExec(String(state.settings.appsScriptUrl||'').trim());
+    return !(sheetOk && execOk && logsOk && baseOk);
+  }catch{ return true; }
+}
+function openInstallerWindow(){
+  try{
+    const win = new BrowserWindow({ width: 880, height: 720, resizable: true, icon: getWindowIconImage(), webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'renderer.js') } });
+    win.setMenu(null);
+    win.loadFile(path.join(__dirname, 'installer.html'));
+    makeHidable(win);
+  }catch(e){ log('openInstallerWindow error', e && e.message || e); }
 }
 
 // ---------- Icon helpers (SVG rasterize with fallback) ----------
@@ -1702,6 +1755,8 @@ app.whenReady().then(() => {
   try { tray.on('click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   try { tray.on('right-click', () => { tray.popUpContextMenu(buildMenu()); }); } catch {}
   rebuildTray();
+  try { if (needsOnboarding()) openInstallerWindow(); } catch {}
+  try { setupAutoUpdates(); setTimeout(() => { try { if (autoUpdater) autoUpdater.checkForUpdatesAndNotify(); } catch{} }, 8000); } catch {}
   startScanning();
 });
 

@@ -1,0 +1,193 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>EQ Character Manager — Setup Wizard</title>
+  <style>
+    :root { --muted:#666; }
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    h2 { margin: 6px 0 14px; }
+    .step { display:none; }
+    .step.active { display:block; }
+    .row { display:flex; gap:10px; align-items:center; margin: 10px 0; }
+    .row > * { flex: 1; }
+    input[type="text"], input[type="password"] { width:100%; padding:8px; }
+    button { padding:8px 12px; }
+    .note { color: var(--muted); font-size: 12px; }
+    .actions { display:flex; justify-content: space-between; gap:10px; margin-top: 16px; }
+    .actions .spacer { flex:1 }
+    .invalid { outline: 2px solid #d33; }
+    ol { padding-left: 18px; }
+    .small { font-size:12px; color:#444; }
+  </style>
+  <script>
+    function byId(id){ return document.getElementById(id); }
+    function isLikelyAppsScriptExec(url){
+      try{
+        const u = new URL(String(url||'').trim());
+        if (u.protocol !== 'https:') return false;
+        if (u.hostname === 'script.google.com'){
+          const parts = u.pathname.split('/').filter(Boolean);
+          return (parts.length >= 4 && parts[0]==='macros' && parts[1]==='s' && /[A-Za-z0-9_-]+/.test(parts[2]) && parts[3]==='exec');
+        }
+        if (u.hostname.endsWith('googleusercontent.com')){
+          return /\/macros\//.test(u.pathname);
+        }
+        return false;
+      }catch{ return false; }
+    }
+    let step = 0;
+    const maxStep = 4; // 0..4
+    function showStep(i){
+      step = Math.max(0, Math.min(maxStep, i));
+      for (let s=0; s<=maxStep; s++){
+        const el = byId('step'+s);
+        if (el) el.classList.toggle('active', s===step);
+      }
+      renderButtons();
+    }
+    function renderButtons(){
+      byId('back').disabled = (step === 0);
+      const next = byId('next');
+      const finish = byId('finish');
+      next.style.display = (step < maxStep) ? '' : 'none';
+      finish.style.display = (step === maxStep) ? '' : 'none';
+      next.disabled = !canProceed(step);
+    }
+    async function init(){
+      try{
+        const { settings } = await window.EQCM.getSettings();
+        byId('sheetUrl').value = settings.sheetUrl || '';
+        byId('appsScriptUrl').value = settings.appsScriptUrl || '';
+        byId('logsDir').value = settings.logsDir || '';
+        byId('baseDir').value = settings.baseDir || '';
+        byId('localSheetsDir').value = settings.localSheetsDir || '';
+      }catch{}
+      attachHandlers();
+      showStep(0);
+    }
+    function attachHandlers(){
+      ['sheetUrl','appsScriptUrl','logsDir','baseDir','localSheetsDir'].forEach(id => {
+        const el = byId(id);
+        el.addEventListener('input', renderButtons);
+      });
+    }
+    async function pick(which){
+      const res = await window.EQCM.browseFolder(which);
+      if (res && res.path){ byId(which).value = res.path; renderButtons(); }
+    }
+    async function savePartial(fields){
+      await window.EQCM.setSettings(fields);
+    }
+    async function next(){
+      if (!canProceed(step)) return;
+      if (step === 0){ await savePartial({ sheetUrl: byId('sheetUrl').value.trim() }); }
+      if (step === 1){ await savePartial({ appsScriptUrl: byId('appsScriptUrl').value.trim(), remoteSheetsEnabled: true }); }
+      if (step === 2){ await savePartial({ logsDir: byId('logsDir').value.trim() }); }
+      if (step === 3){ await savePartial({ baseDir: byId('baseDir').value.trim() }); }
+      if (step === 4){ await savePartial({ localSheetsDir: byId('localSheetsDir').value.trim(), localSheetsEnabled: true }); }
+      showStep(step+1);
+    }
+    function back(){ showStep(step-1); }
+    async function finish(){
+      await savePartial({ onboardingCompleted: true });
+      window.close();
+    }
+    async function validateSheetUrl(){
+      const el = byId('sheetUrl');
+      const url = el.value.trim();
+      const { sheetId } = await window.EQCM.deriveSheetId(url);
+      const ok = !!sheetId;
+      el.classList.toggle('invalid', !ok && url.length>0);
+      return ok;
+    }
+    function validateExecUrl(){
+      const el = byId('appsScriptUrl');
+      const url = el.value.trim();
+      const ok = isLikelyAppsScriptExec(url);
+      el.classList.toggle('invalid', !ok && url.length>0);
+      return ok;
+    }
+    function canProceed(s){
+      if (s===0) return byId('sheetUrl').value.trim().length>0; // accept and parse later
+      if (s===1) return isLikelyAppsScriptExec(byId('appsScriptUrl').value.trim());
+      if (s===2) return byId('logsDir').value.trim().length>0;
+      if (s===3) return byId('baseDir').value.trim().length>0;
+      if (s===4) return true; // local CSV optional; explain below
+      return true;
+    }
+    function openSheetsNew(){ window.EQCM.openExternal('https://sheets.new'); }
+    function openAppsScriptHome(){ window.EQCM.openExternal('https://script.google.com/home'); }
+    function openDocs(){ window.EQCM.openExternal('https://developers.google.com/apps-script/guides/web'); }
+  </script>
+</head>
+<body>
+  <h2>Setup Wizard</h2>
+
+  <div id="step0" class="step">
+    <h3>1) Create your Google Sheet</h3>
+    <p class="small">Create a spreadsheet that will hold Zone Tracker, CoV Faction, and inventory tabs.</p>
+    <div class="row">
+      <button onclick="openSheetsNew()">Create new sheet</button>
+      <div class="note">Opens a new Google Sheet in your browser.</div>
+    </div>
+    <label>Spreadsheet URL</label>
+    <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/<ID>/edit" onblur="validateSheetUrl()"/>
+    <div class="note">Paste the sheet URL from your browser. We’ll use it for quick access links.</div>
+  </div>
+
+  <div id="step1" class="step">
+    <h3>2) Deploy the Apps Script</h3>
+    <p class="small">This script receives updates from the app and writes to your sheet.</p>
+    <ol class="small">
+      <li>In your Google Sheet, open Extensions → Apps Script.</li>
+      <li>Paste the provided Code.gs from the app’s docs and deploy as Web app.</li>
+      <li>Copy the Web app <b>/exec</b> URL.</li>
+    </ol>
+    <div class="row">
+      <button onclick="openDocs()">View Apps Script docs</button>
+      <button onclick="openAppsScriptHome()">Open Apps Script</button>
+    </div>
+    <label>Apps Script /exec URL</label>
+    <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
+    <div class="note">Paste the exact /exec URL from your deployment.</div>
+  </div>
+
+  <div id="step2" class="step">
+    <h3>3) Pick your EverQuest logs folder</h3>
+    <div class="row">
+      <input id="logsDir" type="text" placeholder="Select EverQuest/logs folder"/>
+      <button onclick="pick('logsDir')">Browse…</button>
+    </div>
+    <div class="note">The app scans this directory for zone changes and considerations.</div>
+  </div>
+
+  <div id="step3" class="step">
+    <h3>4) Pick your EverQuest base folder</h3>
+    <div class="row">
+      <input id="baseDir" type="text" placeholder="Select base EverQuest folder"/>
+      <button onclick="pick('baseDir')">Browse…</button>
+    </div>
+    <div class="note">Used for context and locating related files.</div>
+  </div>
+
+  <div id="step4" class="step">
+    <h3>5) Local CSV output (optional)</h3>
+    <div class="row">
+      <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
+      <button onclick="pick('localSheetsDir')">Browse…</button>
+    </div>
+    <div class="note">This folder stores CSV exports. The CoV Faction sheet in Google Sheets is synced from <b>CoV Faction.csv</b> here. If left blank, the app uses its default folder.</div>
+  </div>
+
+  <div class="actions">
+    <button id="back" onclick="back()">Back</button>
+    <div class="spacer"></div>
+    <button id="next" onclick="next()">Next</button>
+    <button id="finish" onclick="finish()" style="display:none">Finish</button>
+  </div>
+
+  <script>init();</script>
+</body>
+</html>
+
