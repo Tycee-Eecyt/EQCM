@@ -10,6 +10,7 @@
     .row { display:flex; gap:10px; align-items:center; }
     .row > * { flex: 1; }
     button { padding:8px 12px; }
+    .small-btn { padding:4px 8px; font-size:12px; }
     .small { font-size: 12px; color:#555; }
     .grid { display:grid; grid-template-columns: 200px 1fr auto; gap: 8px 12px; align-items:center; }
     .grid label { margin:0; }
@@ -20,15 +21,15 @@
   <div class="grid">
     <label>Logs folder</label>
     <input id="logsDir" type="text" placeholder="Pick EverQuest/logs folder"/>
-    <button onclick="pick('logsDir')">Browse…</button>
+    <button class="small-btn" onclick="pick('logsDir')">Browse…</button>
 
     <label>Base folder</label>
     <input id="baseDir" type="text" placeholder="Pick EverQuest base folder"/>
-    <button onclick="pick('baseDir')">Browse…</button>
+    <button class="small-btn" onclick="pick('baseDir')">Browse…</button>
 
     <label>Local CSV output</label>
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
-    <button onclick="pick('localSheetsDir')">Browse…</button>
+    <button class="small-btn" onclick="pick('localSheetsDir')">Browse…</button>
     <label></label>
     <div class="small">CoV Faction tab is always synced from <b>CoV Faction.csv</b> in this folder. If blank, the app falls back to its <b>sheets-out</b> folder.</div>
     <div></div>
@@ -37,14 +38,6 @@
     <select id="scanIntervalSec">
       <option>30</option><option>60</option><option>120</option><option>300</option>
     </select>
-    <div></div>
-
-    <label>Enable local CSVs</label>
-    <input id="localSheetsEnabled" type="checkbox"/>
-    <div></div>
-
-    <label>Enable Google Sheets (webhook)</label>
-    <input id="remoteSheetsEnabled" type="checkbox"/>
     <div></div>
 
     <label>Apps Script /exec URL</label>
@@ -57,7 +50,7 @@
 
     <label>Spreadsheet URL</label>
     <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit"/>
-    <button onclick="openSheet()">Open</button>
+    <button class="small-btn" onclick="openSheet()">Open</button>
   </div>
 
   <div style="margin-top:16px">
@@ -73,7 +66,6 @@
     async function load(){
       const { settings } = await window.EQCM.getSettings();
       ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
-      ['localSheetsEnabled','remoteSheetsEnabled'].forEach(k => byId(k).checked = !!settings[k]);
       byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
     }
     async function save(){
@@ -85,8 +77,9 @@
         appsScriptSecret: byId('appsScriptSecret').value,
         sheetUrl: byId('sheetUrl').value.trim(),
         scanIntervalSec: Number(byId('scanIntervalSec').value),
-        localSheetsEnabled: byId('localSheetsEnabled').checked,
-        remoteSheetsEnabled: byId('remoteSheetsEnabled').checked
+        // Keep these enabled by default; removed from UI
+        localSheetsEnabled: true,
+        remoteSheetsEnabled: true
       };
       await window.EQCM.setSettings(payload);
     }
@@ -96,8 +89,13 @@
       if (res && res.path) byId(which).value = res.path;
     }
     function openSheet(){
-      const url = byId('sheetUrl').value.trim();
-      if (url) window.EQCM.openExternal(url);
+      let url = byId('sheetUrl').value.trim();
+      if (!url) return;
+      // Normalize: accept bare ID or URLs missing scheme
+      const idOnly = /^[A-Za-z0-9_-]{20,}$/;
+      if (idOnly.test(url)) url = `https://docs.google.com/spreadsheets/d/${url}/edit`;
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      try { window.EQCM.openExternal(url); } catch {}
     }
     load();
   </script>
