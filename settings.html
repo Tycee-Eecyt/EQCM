@@ -10,7 +10,8 @@
     .row { display:flex; gap:10px; align-items:center; }
     .row > * { flex: 1; }
     button { padding:8px 12px; }
-    .small-btn { padding:4px 8px; font-size:12px; }
+    /* Inline action buttons in the grid (Browse/Open) should match primary button sizing */
+    .btn-inline { padding:8px 12px; font-size:14px; justify-self:start; width:auto; min-width:110px; }
     .small { font-size: 12px; color:#555; }
     .grid { display:grid; grid-template-columns: 200px 1fr auto; gap: 8px 12px; align-items:center; }
     .grid label { margin:0; }
@@ -21,15 +22,15 @@
   <div class="grid">
     <label>Logs folder</label>
     <input id="logsDir" type="text" placeholder="Pick EverQuest/logs folder"/>
-    <button class="small-btn" onclick="pick('logsDir')">Browse…</button>
+    <button class="btn-inline" onclick="pick('logsDir')">Browse…</button>
 
     <label>Base folder</label>
     <input id="baseDir" type="text" placeholder="Pick EverQuest base folder"/>
-    <button class="small-btn" onclick="pick('baseDir')">Browse…</button>
+    <button class="btn-inline" onclick="pick('baseDir')">Browse…</button>
 
     <label>Local CSV output</label>
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
-    <button class="small-btn" onclick="pick('localSheetsDir')">Browse…</button>
+    <button class="btn-inline" onclick="pick('localSheetsDir')">Browse…</button>
     <label></label>
     <div class="small">CoV Faction tab is always synced from <b>CoV Faction.csv</b> in this folder. If blank, the app falls back to its <b>sheets-out</b> folder.</div>
     <div></div>
@@ -50,7 +51,7 @@
 
     <label>Spreadsheet URL</label>
     <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit"/>
-    <button class="small-btn" onclick="openSheet()">Open</button>
+    <button class="btn-inline" onclick="openSheet()">Open</button>
   </div>
 
   <div style="margin-top:16px">
