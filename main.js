@@ -1463,7 +1463,6 @@ function buildTrayTooltip(){
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
     { type: 'separator' },
-    { label: 'Rescan now', click: () => { doScanCycle(); } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { label: 'Open local CSV folder', click: () => {
         const outDir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
@@ -1471,6 +1470,7 @@ function buildTrayTooltip(){
       }
     },
     { type: 'separator' },
+    { label: 'Rescan now', click: () => { doScanCycle(); } },
     { label: scanTimer ? 'Pause scanning' : 'Start scanning', click: () => { scanTimer ? stopScanning() : startScanning(); rebuildTray(); } },
     scanSub,
     { type: 'separator' },
