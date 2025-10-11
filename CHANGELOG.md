@@ -1,3 +1,8 @@
+## 2.0.5 — Multi‑size icon + Releases link
+
+- Build: Pack multiple tray PNG sizes into `build/icon.ico` (16, 24, 32, 48, 64, 128, 256) for sharper desktop shortcut and shell icons.
+- Tray: Add “Open Releases…” menu item to quickly open the project’s GitHub Releases page.
+
 ## 2.0.4 — Advanced cleanup
 
 - Advanced: Remove Backscan size (MB) and Backscan retry minutes controls. Code continues using current defaults.
