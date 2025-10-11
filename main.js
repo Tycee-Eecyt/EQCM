@@ -1456,16 +1456,13 @@ function buildTrayTooltip(){
   return Menu.buildFromTemplate([
     { label: version ? `EQ Character Manager v${version}` : 'EQ Character Manager', enabled: false },
     { type: 'separator' },
+    { label: 'Favorite Characters…', click: openFavoritesWindow },
+    { label: 'Copy Last Log', click: () => { try { copyLatestPlayersToClipboard(); } catch {} } },
     buildPushInventorySubmenu(),
-    { label: 'Check for updates…', click: () => { try { manualCheckForUpdates(); } catch {} } },
-    { label: 'Open Releases…', click: () => { try { shell.openExternal('https://github.com/Tycee-Eecyt/EQCM/releases'); } catch {} } },
     { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
-    { label: 'Favorites…', click: openFavoritesWindow },
-    { label: 'Advanced…', click: openAdvancedWindow },
     { type: 'separator' },
-    { label: 'Getting Started', click: openDocsWindow },
     { label: 'Rescan now', click: () => { doScanCycle(); } },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { label: 'Open local CSV folder', click: () => {
@@ -1473,10 +1470,14 @@ function buildTrayTooltip(){
         shell.openPath(outDir);
       }
     },
-    { label: 'Copy Last Log', click: () => { try { copyLatestPlayersToClipboard(); } catch {} } },
     { type: 'separator' },
     { label: scanTimer ? 'Pause scanning' : 'Start scanning', click: () => { scanTimer ? stopScanning() : startScanning(); rebuildTray(); } },
     scanSub,
+    { type: 'separator' },
+    { label: 'Getting Started', click: openDocsWindow },
+    { label: 'Check for updates…', click: () => { try { manualCheckForUpdates(); } catch {} } },
+    { label: 'Open Releases…', click: () => { try { shell.openExternal('https://github.com/Tycee-Eecyt/EQCM/releases'); } catch {} } },
+    { label: 'Advanced…', click: openAdvancedWindow },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } }
   ]);
