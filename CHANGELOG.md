@@ -1,3 +1,18 @@
+## 2.0.3 — Version visible in tray
+
+- Tray: Show app version in the tray tooltip when hovering the icon.
+- Tray menu: Add a disabled header item with the current version at the top.
+
+## 2.0.2 — Update check UX
+
+- Tray: “Check for updates…” now shows dialogs for Up to Date, Update Available, and error/no‑updater cases.
+- Keeps existing auto‑download and “Restart Now” prompt when the update is ready.
+
+## 2.0.1 — Desktop shortcut icon fix
+
+- Build: Generate `build/icon.ico` from `assets/tray-256.png` so the desktop shortcut matches the system tray icon.
+- Packaging: Run the icon generator automatically before `electron-builder`.
+
 ## 1.8.0 — Zone tracking by source file
 
 - Feature: Track and upsert zones per log file to avoid collisions when the same character name exists on multiple servers (e.g., Zoic on P1999Green vs Real-Test).
