@@ -22,8 +22,6 @@
     <button onclick="addFavorite()">Add</button>
     <button onclick="setAllFavs(true)" title="Check all names">Select All</button>
     <button onclick="setAllFavs(false)" title="Uncheck all names">Deselect All</button>
-    <button onclick="loadFromSheet()" title="Fetch character names from your Google Sheet">Load from Sheet</button>
-    <button onclick="useSheetOnly()" title="Replace selection with names from your Google Sheet">Use Sheet List</button>
   </div>
 
   <div id="favList" class="listbox"></div>
@@ -32,7 +30,6 @@
     <button onclick="saveAndClose()">Save & Close</button>
   </div>
 
-  <p class="small" style="margin-top:10px">Checked names are included in Favorites. When "Favorites only" is on, CSV/webhook output is filtered to these characters.</p>
 
   <script>
     const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
