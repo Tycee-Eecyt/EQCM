@@ -1781,16 +1781,8 @@ ipcMain.handle('cov:getLists', async () => {
     };
   } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
 });
-ipcMain.handle('advanced:forceBackscan', async () => {
-  try { await forceBackscanMissingZones(); return { ok: true }; }
-  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
-});
 ipcMain.handle('advanced:replaceAll', async (_evt, opts) => {
   try { await sendReplaceAllWebhook(opts||{}); return { ok: true }; }
-  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
-});
-ipcMain.handle('advanced:replaceFactionsCsv', async () => {
-  try { await sendReplaceFactionsCsvFromLocal(); return { ok: true }; }
   catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('settings:browseFolder', async (evt, which) => {
