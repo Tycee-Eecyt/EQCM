@@ -23,6 +23,10 @@ function doPost(e){
       replaceAll_(ss, body);
       return respond_({ ok: true, mode: 'replaceAll' });
     }
+    if (body.action === 'listCharacters'){
+      const res = listCharacters_(ss);
+      return respond_(res);
+    }
     // Replace CoV Faction tab with EXACT CSV contents
     if (body.action === 'replaceFactionsCsv'){
       const csv = String(body.csv || '');
@@ -230,6 +234,28 @@ function replaceAll_(ss, body){
   // Factions JSON is ignored; use replaceFactionsCsv action instead
   if (up.inventory) replaceInventorySummary_(ss, up.inventory, body.meta || {});
   if (up.inventoryDetails) replaceInventoryDetails_(ss, up.inventoryDetails);
+}
+
+// Return unique character names currently present on any of the primary tabs.
+function listCharacters_(ss){
+  try{
+    const tabs = [CONFIG.ZONES_SHEET, CONFIG.FACTION_SHEET, CONFIG.INV_SUMMARY_SHEET];
+    const set = new Set();
+    tabs.forEach(name => {
+      const sh = ss.getSheetByName(name);
+      if (!sh) return;
+      const data = sh.getDataRange().getValues();
+      if (!data || data.length < 2) return; // header + at least one row
+      const header = data[0];
+      const idx = header.indexOf('Character');
+      if (idx < 0) return;
+      for (let r=1; r<data.length; r++){
+        const n = String(data[r][idx]||'').trim();
+        if (n) set.add(n);
+      }
+    });
+    return { ok:true, characters: Array.from(set).sort() };
+  } catch(err){ return { ok:false, error: String(err && err.message || err) }; }
 }
 
 // Create a NEW sheet tab with a character's inventory (similar to screenshot)

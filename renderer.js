@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('EQCM', {
   saveRaidKitAndPush: (payload) => ipcRenderer.invoke('raidkit:saveAndPush', payload),
   getRaidKitCounts: (character) => ipcRenderer.invoke('raidkit:counts', character)
   ,copyPlayersLatest: () => ipcRenderer.invoke('players:copyLatest')
+  ,getSheetCharacters: () => ipcRenderer.invoke('favorites:listFromSheet')
 });
 
 ipcRenderer.on('settings:discoveredChars', (_e, chars) => {

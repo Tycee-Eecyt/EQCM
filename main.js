@@ -760,6 +760,26 @@ async function maybePostWebhook(){
   catch(e){ log('Webhook error', e.message); }
 }
 
+// Fetch unique characters currently present on the Google Sheet via Apps Script
+async function fetchSheetCharacters(){
+  try{
+    ensureSettings();
+    if (state.settings.remoteSheetsEnabled === false) return { ok:false, error:'remoteSheetsDisabled' };
+    const url = (state.settings.appsScriptUrl||'').trim();
+    if (!url || !isLikelyAppsScriptExec(url)) return { ok:false, error:'invalidAppsScriptUrl' };
+    const secret = (state.settings.appsScriptSecret||'').trim();
+    const payload = { action: 'listCharacters', secret };
+    const res = await postJson(url, payload);
+    if (!(res.status >= 200 && res.status < 300)) return { ok:false, error:'http_'+res.status };
+    let body = {};
+    try { body = JSON.parse(String(res.body||'{}')); } catch(e){ return { ok:false, error:'parse-error' }; }
+    if (body && body.ok === true && Array.isArray(body.characters)){
+      return { ok:true, characters: body.characters };
+    }
+    return { ok:false, error: String(body && body.error || 'unknown') };
+  }catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+}
+
 // Replace CoV Faction sheet with the exact contents of local CSV
 async function sendReplaceFactionsCsvFromLocal(){
   ensureSettings();
@@ -1815,6 +1835,10 @@ ipcMain.handle('settings:set', async (evt, payload) => {
   state.settings = Object.assign({}, state.settings, payload || {});
   saveSettings(); rebuildTray();
   return { ok: true };
+});
+ipcMain.handle('favorites:listFromSheet', async () => {
+  try { return await fetchSheetCharacters(); }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('players:copyLatest', async () => {
   try { return copyLatestPlayersToClipboard(); }
