@@ -20,6 +20,8 @@
     <label style="margin:0"><input id="favoritesOnly" type="checkbox"/> Favorites only</label>
     <input id="favInput" type="text" placeholder="Add character name and press Enter" onkeydown="if(event.key==='Enter'){addFavorite()}"/>
     <button onclick="addFavorite()">Add</button>
+    <button onclick="setAllFavs(true)" title="Check all names">Select All</button>
+    <button onclick="setAllFavs(false)" title="Uncheck all names">Deselect All</button>
     <button onclick="loadFromSheet()" title="Fetch character names from your Google Sheet">Load from Sheet</button>
     <button onclick="useSheetOnly()" title="Replace selection with names from your Google Sheet">Use Sheet List</button>
   </div>
@@ -61,6 +63,12 @@
       const { settings, characters } = await window.EQCM.getSettings();
       byId('favoritesOnly').checked = !!settings.favoritesOnly;
       renderFavs(settings.favorites||[], characters||[]);
+    }
+    function setAllFavs(flag){
+      try{
+        const boxes = byId('favList').querySelectorAll('input[type="checkbox"]');
+        boxes.forEach(cb => cb.checked = !!flag);
+      }catch{}
     }
     async function loadFromSheet(){
       try{
