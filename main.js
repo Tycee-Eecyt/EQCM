@@ -20,7 +20,7 @@ if (typeof getLogId !== 'function') {
 }
 
 // EQ Character Manager — v1.6.0 — Author: Tyler A
-const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme } = require('electron');
+const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, clipboard, Notification } = require('electron');
 // Optional auto-update (electron-updater)
 let autoUpdater = null;
 try { autoUpdater = require('electron-updater').autoUpdater; }
@@ -1341,6 +1341,87 @@ changed = writeCsv(path.join(dir, 'Raid Kit.csv'), fullHead, iRowsOut) || change
   return changed;
 }
 
+// ---------- Players-in-zone extraction ----------
+function getLastModifiedEqLogFile(){
+  try {
+    ensureSettings();
+    const dir = state.settings.logsDir;
+    if (!dir || !fs.existsSync(dir)) return '';
+    const files = fs.readdirSync(dir)
+      .filter(f => /^eqlog_.+?\.txt$/i.test(f))
+      .map(f => path.join(dir, f));
+    if (!files.length) return '';
+    let best = files[0];
+    let bestM = 0;
+    for (const fp of files){
+      try {
+        const st = fs.statSync(fp);
+        const m = st.mtimeMs || (st.mtime ? st.mtime.getTime() : 0) || 0;
+        if (m >= bestM){ bestM = m; best = fp; }
+      } catch {}
+    }
+    return best;
+  } catch { return ''; }
+}
+
+function findLatestPlayersBlockInText(text){
+  try{
+    if (!text) return null;
+    const s = String(text).replace(/\r\n/g,'\n');
+    const reStart = /\[[^\]]+\]\s*Players on EverQuest:/g;
+    let lastIdx = -1, m;
+    while ((m = reStart.exec(s))){ lastIdx = m.index; }
+    if (lastIdx < 0) return null;
+    const tail = s.substring(lastIdx);
+    const lines = tail.split('\n');
+    const out = [];
+    for (let i=0;i<lines.length;i++){
+      const line = lines[i];
+      if (!line) break;
+      out.push(line);
+      if (/^\[[^\]]+\]\s*There are\s+\d+\s+players\s+in\s+.+\./i.test(line)) break;
+    }
+    if (out.length < 3) return null;
+    const tsStrip = (l) => l.replace(/^\[[^\]]+\]\s*/, '');
+    const clean = out.map(tsStrip).join('\n');
+    return { raw: out.join('\n'), clean };
+  }catch{ return null; }
+}
+
+function copyLatestPlayersToClipboard(){
+  try{
+    const filePath = getLastModifiedEqLogFile();
+    if (!filePath){
+      try { dialog.showMessageBox({ type:'warning', buttons:['OK'], title:'Logs Not Found', message:'No EverQuest logs found', detail:'Set your Logs folder in Settings and try again.' }); } catch {}
+      return { ok:false, error:'no-logs' };
+    }
+    let text = '';
+    try{
+      const st = fs.statSync(filePath);
+      const max = 512*1024; // 512KB tail
+      const fd = fs.openSync(filePath,'r');
+      const size = st.size;
+      const start = Math.max(0, size - max);
+      const len = size - start;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, start);
+      fs.closeSync(fd);
+      text = buf.toString('utf8');
+    }catch(e){
+      try { dialog.showMessageBox({ type:'error', buttons:['OK'], title:'Read Error', message:'Could not read latest log file', detail:String(e && e.message || e) }); } catch {}
+      return { ok:false, error:'read-error' };
+    }
+    const block = findLatestPlayersBlockInText(text);
+    if (!block){
+      try { dialog.showMessageBox({ type:'info', buttons:['OK'], title:'No Players Block', message:'No recent "Players on EverQuest" block found in the log tail.' }); } catch {}
+      return { ok:false, error:'not-found' };
+    }
+    clipboard.writeText(block.clean);
+    try { (new Notification({ title: 'Players copied', body: 'Latest players-in-zone list copied to clipboard.' })).show(); } catch {}
+    return { ok:true };
+  }catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
+}
+
 // ---------- UI ----------
 let tray = null, settingsWin = null, favoritesWin = null;
 function buildTrayTooltip(){
@@ -1377,6 +1458,7 @@ function buildTrayTooltip(){
         shell.openPath(outDir);
       }
     },
+    { label: 'Copy Last Log', click: () => { try { copyLatestPlayersToClipboard(); } catch {} } },
     { type: 'separator' },
     { label: scanTimer ? 'Pause scanning' : 'Start scanning', click: () => { scanTimer ? stopScanning() : startScanning(); rebuildTray(); } },
     scanSub,
@@ -1733,6 +1815,10 @@ ipcMain.handle('settings:set', async (evt, payload) => {
   state.settings = Object.assign({}, state.settings, payload || {});
   saveSettings(); rebuildTray();
   return { ok: true };
+});
+ipcMain.handle('players:copyLatest', async () => {
+  try { return copyLatestPlayersToClipboard(); }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('raidkit:get', async () => {
   try{
