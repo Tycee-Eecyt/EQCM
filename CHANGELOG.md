@@ -72,3 +72,11 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Moved Force Backscan, Full Refresh to Sheet, and Backscan configuration to a new Advanced window (tray → Advanced…).
 - Settings page simplified (advanced options removed).
 - Added simple classic-style icons in assets: `assets/simple-eq-1999.svg`, `assets/simple-xp-orb.svg`, `assets/simple-xp-shield.svg`.
+## 2.0.6 — Favorites + Players Copy
+
+- Tray: Add “Copy Last Log” to copy the latest “Players on EverQuest” block from the most recent log to the clipboard and show a notification.
+- Favorites UI: Add Select All / Deselect All buttons.
+- Favorites + Sheet: Add “Load from Sheet” (merge) and “Use Sheet List” (replace) to sync favorites with the characters currently on your Google Sheet.
+- Save behavior: Saving Favorites now triggers a Replace All so the sheet reflects your selection immediately when “Favorites only” is enabled.
+- Filtering: Favorites-only now applies to Zone Tracker and Raid Kit (previously only affected CoV Faction).
+- Repo: Update GitHub owner/links to Tycee-Eecyt/EQCM.
