@@ -31,15 +31,6 @@
     <label>Local CSV output</label>
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
     <button class="btn-inline" onclick="pick('localSheetsDir')">Browse…</button>
-    <label></label>
-    <div class="small">CoV Faction tab is always synced from <b>CoV Faction.csv</b> in this folder. If blank, the app falls back to its <b>sheets-out</b> folder.</div>
-    <div></div>
-
-    <label>Scan interval</label>
-    <select id="scanIntervalSec">
-      <option>30</option><option>60</option><option>120</option><option>300</option>
-    </select>
-    <div></div>
 
     <label>Apps Script /exec URL</label>
     <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec"/>
@@ -67,7 +58,6 @@
     async function load(){
       const { settings } = await window.EQCM.getSettings();
       ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
-      byId('scanIntervalSec').value = String(settings.scanIntervalSec || 60);
     }
     async function save(){
       const payload = {
@@ -77,7 +67,6 @@
         appsScriptUrl: byId('appsScriptUrl').value.trim(),
         appsScriptSecret: byId('appsScriptSecret').value,
         sheetUrl: byId('sheetUrl').value.trim(),
-        scanIntervalSec: Number(byId('scanIntervalSec').value),
         // Keep these enabled by default; removed from UI
         localSheetsEnabled: true,
         remoteSheetsEnabled: true
