@@ -1,3 +1,8 @@
+## 2.0.4 — Advanced cleanup
+
+- Advanced: Remove Backscan size (MB) and Backscan retry minutes controls. Code continues using current defaults.
+- Advanced: Remove buttons “Force backscan (missing zones)” and “Replace CoV Faction from CSV)”.
+
 ## 2.0.3 — Version visible in tray
 
 - Tray: Show app version in the tray tooltip when hovering the icon.
