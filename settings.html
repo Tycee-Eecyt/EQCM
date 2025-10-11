@@ -53,7 +53,7 @@
 
     <label>Spreadsheet URL</label>
     <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit"/>
-    <button class="btn-inline" onclick="openSheet()">Open</button>
+    <div></div>
     </div>
 
     <div style="margin-top:16px">
@@ -89,15 +89,6 @@
     async function pick(which){
       const res = await window.EQCM.browseFolder(which);
       if (res && res.path) byId(which).value = res.path;
-    }
-    function openSheet(){
-      let url = byId('sheetUrl').value.trim();
-      if (!url) return;
-      // Normalize: accept bare ID or URLs missing scheme
-      const idOnly = /^[A-Za-z0-9_-]{20,}$/;
-      if (idOnly.test(url)) url = `https://docs.google.com/spreadsheets/d/${url}/edit`;
-      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-      try { window.EQCM.openExternal(url); } catch {}
     }
     load();
   </script>

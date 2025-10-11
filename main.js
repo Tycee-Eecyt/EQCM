@@ -1463,6 +1463,7 @@ function buildTrayTooltip(){
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
     { type: 'separator' },
+    { label: 'Open Google Sheet', click: openGoogleSheet },
     { label: 'Open data folder', click: () => { shell.openPath(DATA_DIR); } },
     { label: 'Open local CSV folder', click: () => {
         const outDir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
@@ -1502,6 +1503,18 @@ function openFavoritesWindow(){
   makeHidable(favoritesWin);
   favoritesWin.on('closed', () => favoritesWin = null);
 }
+function openGoogleSheet(){
+  ensureSettings();
+  const url = String(state.settings.sheetUrl || '').trim();
+  if (url){
+    try { shell.openExternal(url); } catch (err) { log('Open sheet error', err && err.message || err); }
+    return;
+  }
+  try {
+    dialog.showMessageBox({ type: 'info', buttons: ['OK'], defaultId: 0, title: 'Google Sheet', message: 'No Google Sheet URL configured.', detail: 'Set the Sheet URL on the Settings tab first.' });
+  } catch (err) {}
+}
+
 function openDocsWindow(){
   const win = new BrowserWindow({ width: 900, height: 740, resizable: true, icon: getWindowIconImage() });
   win.setMenu(null);
