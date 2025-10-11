@@ -1352,13 +1352,13 @@ function buildTrayTooltip(){
   const status = scanTimer ? 'running' : 'paused';
   return `EQ Character Manager\nStatus: ${status}\nTZ: ${tz} — Scan: ${interval}s\nLogs: ${logs}\nBase: ${base}`;
 }
-function buildMenu(){
+ function buildMenu(){
   ensureSettings();
   const scanChoices = [30,60,120,300];
   const scanSub = { label: 'Scan interval', submenu: scanChoices.map(sec => ({ label: `${sec}s${(state.settings.scanIntervalSec===sec) ? ' ✓':''}`, click: () => { state.settings.scanIntervalSec = sec; saveSettings(); restartScanning(); rebuildTray(); } })) };
   return Menu.buildFromTemplate([
     buildPushInventorySubmenu(),
-    { label: 'Check for updates…', click: () => { try { if (autoUpdater) autoUpdater.checkForUpdates(); else shell.openExternal('https://github.com/TylerGeorgeAlexander/EQCM/releases'); } catch {} } },
+    { label: 'Check for updates…', click: () => { try { manualCheckForUpdates(); } catch {} } },
     { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
@@ -1449,6 +1449,54 @@ function setupAutoUpdates(){
       }catch{}
     });
   }catch{}
+}
+
+// Manual update check with user feedback dialogs
+async function manualCheckForUpdates(){
+  try{
+    if (!autoUpdater){
+      const res = await dialog.showMessageBox({
+        type: 'info', buttons: ['Open Releases','Close'], defaultId: 0, cancelId: 1,
+        title: 'Updates', message: 'Auto-updater not available.',
+        detail: 'Open the Releases page to download updates manually.'
+      });
+      if (res.response === 0){ try { shell.openExternal('https://github.com/TylerGeorgeAlexander/EQCM/releases'); } catch {} }
+      return;
+    }
+    const current = app.getVersion();
+    let info = null;
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      info = result && result.updateInfo ? result.updateInfo : null;
+    } catch (e) {
+      // The library can throw on "no update" in some cases; fall back to event path
+      info = null;
+    }
+    const next = info && info.version ? String(info.version) : '';
+    if (next && next !== current){
+      await dialog.showMessageBox({
+        type: 'info', buttons: ['OK'], defaultId: 0,
+        title: 'Update Available',
+        message: `Version ${next} is available`,
+        detail: 'The update will download in the background. You will be prompted to restart when it is ready.'
+      });
+    } else {
+      await dialog.showMessageBox({
+        type: 'info', buttons: ['OK'], defaultId: 0,
+        title: 'Up to Date',
+        message: `You are on the latest version (${current}).`
+      });
+    }
+  }catch(e){
+    try{
+      await dialog.showMessageBox({
+        type: 'error', buttons: ['OK'], defaultId: 0,
+        title: 'Update Check Failed',
+        message: 'Could not check for updates.',
+        detail: String(e && e.message || e)
+      });
+    }catch{}
+  }
 }
 
 // ---------- Installer / Onboarding ----------
