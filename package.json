@@ -1,6 +1,6 @@
 {
   "name": "eq-character-manager",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "EQ Character Manager \u2014 system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
   "main": "main.js",
   "author": "Tyler A",

@@ -80,3 +80,10 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Save behavior: Saving Favorites now triggers a Replace All so the sheet reflects your selection immediately when “Favorites only” is enabled.
 - Filtering: Favorites-only now applies to Zone Tracker and Raid Kit (previously only affected CoV Faction).
 - Repo: Update GitHub owner/links to Tycee-Eecyt/EQCM.
+## 2.0.7 — Settings UX polish
+
+- Buttons: Make Browse/Open similar size to Save & Close; align spacing.
+- Layout: Add page wrapper with consistent margins/padding; increase grid gaps; prevent control overlap.
+- Help text: Move Apps Script guidance to its own row.
+- Open behavior: Normalize Spreadsheet URL and always open in default browser.
+- Simplify: Remove CoV Faction CSV note and Scan interval from Settings (interval is controlled via tray menu).
