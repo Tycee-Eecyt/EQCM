@@ -87,3 +87,8 @@ Notes: After deploying the new Apps Script, clear existing rows in the “Zone T
 - Help text: Move Apps Script guidance to its own row.
 - Open behavior: Normalize Spreadsheet URL and always open in default browser.
 - Simplify: Remove CoV Faction CSV note and Scan interval from Settings (interval is controlled via tray menu).
+## 2.0.8 — CoV list wording + filter cleanup
+
+- CoV Mob List: Rename “Reset Overrides” to “Reset to Default Mob List”.
+- CoV Mob List: Rename “Merged effective list” to “Custom Combined List”.
+- CoV: Remove “Accept all considers (record any mob)” option and backend support; parsing now always uses the CoV set.
