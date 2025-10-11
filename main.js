@@ -1354,9 +1354,12 @@ function buildTrayTooltip(){
 }
  function buildMenu(){
   ensureSettings();
+  const version = (() => { try { return app.getVersion && app.getVersion(); } catch { return ''; } })();
   const scanChoices = [30,60,120,300];
   const scanSub = { label: 'Scan interval', submenu: scanChoices.map(sec => ({ label: `${sec}s${(state.settings.scanIntervalSec===sec) ? ' ✓':''}`, click: () => { state.settings.scanIntervalSec = sec; saveSettings(); restartScanning(); rebuildTray(); } })) };
   return Menu.buildFromTemplate([
+    { label: version ? `EQ Character Manager v${version}` : 'EQ Character Manager', enabled: false },
+    { type: 'separator' },
     buildPushInventorySubmenu(),
     { label: 'Check for updates…', click: () => { try { manualCheckForUpdates(); } catch {} } },
     { label: 'Raid Kit…', click: openRaidKitWindow },
@@ -1380,7 +1383,7 @@ function buildTrayTooltip(){
     { label: 'Quit', click: () => { quitting = true; app.quit(); } }
   ]);
 }
-function rebuildTray(){ if (!tray) return; tray.setContextMenu(buildMenu()); tray.setToolTip(buildTrayTooltip()); }
+function rebuildTray(){ if (!tray) return; tray.setContextMenu(buildMenu()); tray.setToolTip(withVersionTooltip(buildTrayTooltip())); }
 function makeHidable(win){
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
 }
@@ -1497,6 +1500,15 @@ async function manualCheckForUpdates(){
       });
     }catch{}
   }
+}
+
+// Prefix app version into the tray tooltip title
+function withVersionTooltip(s){
+  try {
+    const v = app.getVersion && app.getVersion();
+    if (v) return String(s||'').replace(/^EQ Character Manager\b/, `EQ Character Manager v${v}`);
+  } catch {}
+  return s;
 }
 
 // ---------- Installer / Onboarding ----------
