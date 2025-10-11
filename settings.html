@@ -4,22 +4,26 @@
   <meta charset="utf-8"/>
   <title>EQ Character Manager — Settings</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 16px; }
+    /* Page layout */
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    .page { max-width: 960px; margin: 16px auto; padding: 0 16px; }
     label { display:block; margin-top:10px; font-weight:600; }
-    input[type="text"], input[type="password"], select { width: 100%; padding: 8px; }
+    input[type="text"], input[type="password"], select { width: 100%; padding: 10px 12px; }
     .row { display:flex; gap:10px; align-items:center; }
     .row > * { flex: 1; }
     button { padding:8px 12px; }
     /* Inline action buttons in the grid (Browse/Open) should match primary button sizing */
     .btn-inline { padding:8px 12px; font-size:14px; justify-self:start; width:auto; min-width:110px; }
-    .small { font-size: 12px; color:#555; }
-    .grid { display:grid; grid-template-columns: 200px 1fr auto; gap: 8px 12px; align-items:center; }
+    .small { font-size: 12px; color:#555; margin-top:4px; }
+    .grid { display:grid; grid-template-columns: 220px 1fr auto; column-gap: 16px; row-gap: 12px; align-items:center; }
     .grid label { margin:0; }
+    h2 { margin: 0 0 16px 0; }
   </style>
 </head>
 <body>
-  <h2>EQ Character Manager — Settings</h2>
-  <div class="grid">
+  <div class="page">
+    <h2>EQ Character Manager — Settings</h2>
+    <div class="grid">
     <label>Logs folder</label>
     <input id="logsDir" type="text" placeholder="Pick EverQuest/logs folder"/>
     <button class="btn-inline" onclick="pick('logsDir')">Browse…</button>
@@ -43,15 +47,16 @@
     <label>Spreadsheet URL</label>
     <input id="sheetUrl" type="text" placeholder="https://docs.google.com/spreadsheets/d/&lt;ID&gt;/edit"/>
     <button class="btn-inline" onclick="openSheet()">Open</button>
-  </div>
+    </div>
 
-  <div style="margin-top:16px">
-    <button onclick="saveAndClose()">Save & Close</button>
-  </div>
+    <div style="margin-top:16px">
+      <button onclick="saveAndClose()">Save & Close</button>
+    </div>
 
-  <p class="small" style="margin-top:12px">
-    Use the tray menu → <b>Favorites…</b> to manage favorite characters and filtering.
-  </p>
+    <p class="small" style="margin-top:12px">
+      Use the tray menu → <b>Favorites…</b> to manage favorite characters and filtering.
+    </p>
+  </div>
 
   <script>
     const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
