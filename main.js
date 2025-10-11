@@ -760,6 +760,26 @@ async function maybePostWebhook(){
   catch(e){ log('Webhook error', e.message); }
 }
 
+// Fetch unique characters currently present on the Google Sheet via Apps Script
+async function fetchSheetCharacters(){
+  try{
+    ensureSettings();
+    if (state.settings.remoteSheetsEnabled === false) return { ok:false, error:'remoteSheetsDisabled' };
+    const url = (state.settings.appsScriptUrl||'').trim();
+    if (!url || !isLikelyAppsScriptExec(url)) return { ok:false, error:'invalidAppsScriptUrl' };
+    const secret = (state.settings.appsScriptSecret||'').trim();
+    const payload = { action: 'listCharacters', secret };
+    const res = await postJson(url, payload);
+    if (!(res.status >= 200 && res.status < 300)) return { ok:false, error:'http_'+res.status };
+    let body = {};
+    try { body = JSON.parse(String(res.body||'{}')); } catch(e){ return { ok:false, error:'parse-error' }; }
+    if (body && body.ok === true && Array.isArray(body.characters)){
+      return { ok:true, characters: body.characters };
+    }
+    return { ok:false, error: String(body && body.error || 'unknown') };
+  }catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
+}
+
 // Replace CoV Faction sheet with the exact contents of local CSV
 async function sendReplaceFactionsCsvFromLocal(){
   ensureSettings();
@@ -816,17 +836,17 @@ async function sendReplaceAllWebhook(opts){
   if (!url || !isLikelyAppsScriptExec(url)) { log('ReplaceAll aborted: invalid Apps Script URL'); return; }
   const secret = (state.settings.appsScriptSecret||'').trim();
 
-  const zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+  let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
     ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
     : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
-  const covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
-  const invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
+  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
     const extras = buildRaidKitExtrasForCharacter(character);
     const exMap = {}; extras.forEach(e => exMap[e.header]=e.value);
     return { character, file: v.filePath||'', logFile: getLatestZoneSourceForChar(character), created: v.fileCreated||'', modified: v.fileModified||'', raidKit: kit, kitExtras: exMap };
   });
-  const invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
+  let invDetails = Object.entries(state.inventory || {}).map(([character, v]) => ({ character, file: v.filePath||'', created: v.fileCreated||'', modified: v.fileModified||'', items: v.items||[] }));
 
   // Apply favoritesOnly filtering for ReplaceAll as well so sheet matches CSV exactly
   try{
@@ -1812,9 +1832,29 @@ ipcMain.handle('settings:deriveSheetId', async (evt, url) => {
 
 ipcMain.handle('settings:set', async (evt, payload) => {
   ensureSettings();
+  // Capture previous favorites state to detect changes
+  const prevOnly = !!state.settings.favoritesOnly;
+  const prevFavs = Array.isArray(state.settings.favorites) ? state.settings.favorites.map(String).sort() : [];
+
   state.settings = Object.assign({}, state.settings, payload || {});
   saveSettings(); rebuildTray();
+
+  try {
+    const nextOnly = !!state.settings.favoritesOnly;
+    const nextFavs = Array.isArray(state.settings.favorites) ? state.settings.favorites.map(String).sort() : [];
+    const changedOnly = prevOnly !== nextOnly;
+    const changedFavs = prevFavs.length !== nextFavs.length || prevFavs.some((v,i)=>v!==nextFavs[i]);
+    if (changedOnly || changedFavs) {
+      // Kick a Replace All so the Google Sheet reflects the new favorites filter immediately
+      setImmediate(() => { try { sendReplaceAllWebhook({ force: true }); } catch {} });
+    }
+  } catch {}
+
   return { ok: true };
+});
+ipcMain.handle('favorites:listFromSheet', async () => {
+  try { return await fetchSheetCharacters(); }
+  catch(e){ return { ok:false, error: String(e&&e.message||e) }; }
 });
 ipcMain.handle('players:copyLatest', async () => {
   try { return copyLatestPlayersToClipboard(); }

@@ -20,6 +20,10 @@
     <label style="margin:0"><input id="favoritesOnly" type="checkbox"/> Favorites only</label>
     <input id="favInput" type="text" placeholder="Add character name and press Enter" onkeydown="if(event.key==='Enter'){addFavorite()}"/>
     <button onclick="addFavorite()">Add</button>
+    <button onclick="setAllFavs(true)" title="Check all names">Select All</button>
+    <button onclick="setAllFavs(false)" title="Uncheck all names">Deselect All</button>
+    <button onclick="loadFromSheet()" title="Fetch character names from your Google Sheet">Load from Sheet</button>
+    <button onclick="useSheetOnly()" title="Replace selection with names from your Google Sheet">Use Sheet List</button>
   </div>
 
   <div id="favList" class="listbox"></div>
@@ -60,6 +64,39 @@
       byId('favoritesOnly').checked = !!settings.favoritesOnly;
       renderFavs(settings.favorites||[], characters||[]);
     }
+    function setAllFavs(flag){
+      try{
+        const boxes = byId('favList').querySelectorAll('input[type="checkbox"]');
+        boxes.forEach(cb => cb.checked = !!flag);
+      }catch{}
+    }
+    async function loadFromSheet(){
+      try{
+        const res = await window.EQCM.getSheetCharacters();
+        if (!res || res.ok !== true){ alert('Load from Sheet failed: ' + (res && res.error || 'unknown')); return; }
+        const { settings } = await window.EQCM.getSettings();
+        const favs = new Set((settings.favorites||[]).map(String));
+        (res.characters||[]).forEach(n => favs.add(String(n)));
+        renderFavs(Array.from(favs), window.discoveredChars||[]);
+        (res.characters||[]).forEach(n => {
+          const cb = document.getElementById('fav_'+n);
+          if (cb) cb.checked = true;
+        });
+      }catch(e){ alert('Load from Sheet error: ' + (e && e.message || e)); }
+    }
+    async function useSheetOnly(){
+      try{
+        if (!confirm('Replace current favorites with the list from your Google Sheet?')) return;
+        const res = await window.EQCM.getSheetCharacters();
+        if (!res || res.ok !== true){ alert('Fetch failed: ' + (res && res.error || 'unknown')); return; }
+        renderFavs(res.characters||[], window.discoveredChars||[]);
+        (res.characters||[]).forEach(n => {
+          const cb = document.getElementById('fav_'+n);
+          if (cb) cb.checked = true;
+        });
+        byId('favoritesOnly').checked = true;
+      }catch(e){ alert('Use Sheet List error: ' + (e && e.message || e)); }
+    }
     async function save(){
       const payload = {
         favoritesOnly: byId('favoritesOnly').checked,
@@ -74,4 +111,3 @@
   </script>
 </body>
 </html>
-
