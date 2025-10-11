@@ -41,7 +41,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "TylerGeorgeAlexander",
+        "owner": "Tycee-Eecyt",
         "repo": "EQCM",
         "releaseType": "release"
       }

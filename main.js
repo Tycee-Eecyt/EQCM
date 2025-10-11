@@ -1463,7 +1463,7 @@ function buildTrayTooltip(){
     { type: 'separator' },
     buildPushInventorySubmenu(),
     { label: 'Check for updates…', click: () => { try { manualCheckForUpdates(); } catch {} } },
-    { label: 'Open Releases…', click: () => { try { shell.openExternal('https://github.com/TylerGeorgeAlexander/EQCM/releases'); } catch {} } },
+    { label: 'Open Releases…', click: () => { try { shell.openExternal('https://github.com/Tycee-Eecyt/EQCM/releases'); } catch {} } },
     { label: 'Raid Kit…', click: openRaidKitWindow },
     { label: 'CoV Mob List…', click: openCovWindow },
     { label: 'Settings…', click: openSettingsWindow },
@@ -1566,7 +1566,7 @@ async function manualCheckForUpdates(){
         title: 'Updates', message: 'Auto-updater not available.',
         detail: 'Open the Releases page to download updates manually.'
       });
-      if (res.response === 0){ try { shell.openExternal('https://github.com/TylerGeorgeAlexander/EQCM/releases'); } catch {} }
+      if (res.response === 0){ try { shell.openExternal('https://github.com/Tycee-Eecyt/EQCM/releases'); } catch {} }
       return;
     }
     const current = app.getVersion();
