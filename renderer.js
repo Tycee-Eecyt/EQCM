@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('EQCM', {
   setRaidKit: (payload) => ipcRenderer.invoke('raidkit:set', payload),
   saveRaidKitAndPush: (payload) => ipcRenderer.invoke('raidkit:saveAndPush', payload),
   getRaidKitCounts: (character) => ipcRenderer.invoke('raidkit:counts', character)
+  ,copyPlayersLatest: () => ipcRenderer.invoke('players:copyLatest')
 });
 
 ipcRenderer.on('settings:discoveredChars', (_e, chars) => {
