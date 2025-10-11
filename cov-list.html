@@ -15,15 +15,14 @@
 </head>
 <body>
   <h2>CoV Mob List</h2>
-  <p class="small">View defaults, see the merged effective list, and add/remove entries. Changes take effect immediately.</p>
-  <label class="small" style="display:flex; align-items:center; gap:8px; margin:8px 0"><input type="checkbox" id="acceptAllConsiders"/> Accept all considers (record any mob)</label>
+  <p class="small">View defaults, see the Custom Combined List, and add/remove entries. Changes take effect immediately.</p>
 
   <details>
     <summary>Default list (<span id="covDefaultCount">0</span>)</summary>
     <div id="covDefaults" class="listbox" style="white-space:pre-wrap; margin-top:6px"></div>
   </details>
 
-  <h3 style="margin-top:16px">Merged effective list (<span id="covMergedCount">0</span>)</h3>
+  <h3 style="margin-top:16px">Custom Combined List (<span id="covMergedCount">0</span>)</h3>
   <div id="covMerged" class="listbox" style="white-space:pre-wrap"></div>
 
   <div class="grid" style="margin-top:16px">
@@ -46,7 +45,7 @@
 
   <div style="margin-top:12px; display:flex; gap:8px">
     <button onclick="saveAndClose()">Save & Close</button>
-    <button onclick="resetOverrides()">Reset Overrides</button>
+    <button onclick="resetOverrides()">Reset to Default Mob List</button>
   </div>
 
   <script>
@@ -56,7 +55,7 @@
 
     async function load(){
       const lists = await window.EQCM.getCovLists();
-      _cov = lists || { defaults: [], merged: [], additions: [], removals: [], acceptAllConsiders: false };
+      _cov = lists || { defaults: [], merged: [], additions: [], removals: [] };
       render();
     }
     function render(){
@@ -64,7 +63,6 @@
       byId('covDefaults').innerText = (_cov.defaults||[]).join('\n');
       byId('covMergedCount').innerText = String((_cov.merged||[]).length);
       byId('covMerged').innerText = (_cov.merged||[]).join('\n');
-      const chk = byId('acceptAllConsiders'); if (chk) chk.checked = !!_cov.acceptAllConsiders;
       renderBoxes();
     }
     function renderBoxes(){
@@ -119,12 +117,9 @@
       await refresh();
     }
     async function saveAndClose(){
-      await window.EQCM.setSettings({ covAdditions: _cov.additions||[], covRemovals: _cov.removals||[], acceptAllConsiders: !!byId('acceptAllConsiders').checked });
+      await window.EQCM.setSettings({ covAdditions: _cov.additions||[], covRemovals: _cov.removals||[] });
       window.close();
     }
-    byId('acceptAllConsiders').addEventListener('change', async () => {
-      try{ await window.EQCM.setSettings({ acceptAllConsiders: !!byId('acceptAllConsiders').checked }); await refresh(); } catch {}
-    });
     load();
   </script>
 </body>

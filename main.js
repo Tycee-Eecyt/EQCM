@@ -97,7 +97,6 @@ const DEFAULT_SETTINGS = {
   sheetUrl: "",  // spreadsheet link (not a specific tab)
 
   covList: [],
-  acceptAllConsiders: false,
   strictUnstable: false,
   debugLogs: false,
 
@@ -466,7 +465,6 @@ function recalcCovFactionFromTail(){
     const logsDir = state.settings.logsDir;
     if (!logsDir || !fs.existsSync(logsDir)) return;
     const covSet = getCovSet();
-    const acceptAll = !!state.settings.acceptAllConsiders;
     const preferScore = (a, b) => (a == null ? -1 : a) - (b == null ? -1 : b);
     const byChar = {};
     // Build mapping of character -> candidate log file (latest source if available)
@@ -512,13 +510,11 @@ function recalcCovFactionFromTail(){
         const m = RE_CON.exec(line);
         if (!m) continue;
         const mob = String(m.groups && m.groups.mob || '').trim();
-        if (!acceptAll) {
-          const mobNorm = normalizeMobName(mob);
-          if (!covSet.has(mobNorm)){
-            let ok = false;
-            for (const name of covSet){ if (mobNorm.startsWith(name)) { ok = true; break; } }
-            if (!ok) continue;
-          }
+        const mobNorm = normalizeMobName(mob);
+        if (!covSet.has(mobNorm)){
+          let ok = false;
+          for (const name of covSet){ if (mobNorm.startsWith(name)) { ok = true; break; } }
+          if (!ok) continue;
         }
         // Determine standing
         let standing=null, score=null;
@@ -1178,8 +1174,7 @@ async function scanLogs(){
           const mobNorm = normalizeMobName(mob);
           const COV_SET = getCovSet();
           let isCov = false;
-          if (state.settings.acceptAllConsiders) isCov = true;
-          else if (COV_SET.has(mobNorm)) isCov = true;
+          if (COV_SET.has(mobNorm)) isCov = true;
           else { for (const name of COV_SET){ if (mobNorm.startsWith(name)) { isCov = true; break; } } }
 
           if (isCov){
@@ -1903,8 +1898,7 @@ ipcMain.handle('cov:getLists', async () => {
       defaults,
       merged: Array.from(mergedSet),
       additions: Array.from((state.settings.covAdditions||[])),
-      removals: Array.from((state.settings.covRemovals||[])),
-      acceptAllConsiders: !!state.settings.acceptAllConsiders
+      removals: Array.from((state.settings.covRemovals||[]))
     };
   } catch(e){ return { defaults: [], merged: [], additions: [], removals: [], error: String(e&&e.message||e) }; }
 });
