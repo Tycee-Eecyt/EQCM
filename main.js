@@ -674,6 +674,32 @@ function buildEnabledFixedColumns(){
   const hidden = new Set((state.settings.raidKitHidden||[]).map(String));
   return FIXED_KIT_COLUMN_DEFS.filter(def => !hidden.has(def.name));
 }
+function buildLatestZoneRows(){
+  ensureSettings();
+  const tz = state.tz || 'UTC';
+  const raw = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
+    ? Object.values(state.latestZonesByFile).map(v => ({ character: String(v.character || ''), zone: v.zone || '', utc: String(v.detectedUtcISO || ''), local: String(v.detectedLocalISO || ''), tz, source: v.sourceFile || '' }))
+    : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character: String(character || ''), zone: v && v.zone ? v.zone : '', utc: String(v && v.detectedUtcISO ? v.detectedUtcISO : ''), local: String(v && v.detectedLocalISO ? v.detectedLocalISO : ''), tz, source: (v && v.sourceFile) || '' }));
+
+  const byChar = new Map();
+  raw.forEach(row => {
+    const name = row.character.trim();
+    if (!name) return;
+    const prev = byChar.get(name);
+    if (!prev) { byChar.set(name, row); return; }
+    const prevUtc = prev.utc || '';
+    const nextUtc = row.utc || '';
+    if (!prevUtc) { byChar.set(name, row); return; }
+    if (!nextUtc) return;
+    if (nextUtc > prevUtc) byChar.set(name, row);
+  });
+
+  if (byChar.size === 0) {
+    return raw.filter(row => row.character && row.character.trim());
+  }
+  return Array.from(byChar.values());
+}
+
 async function maybePostWebhook(){
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) return;
@@ -681,10 +707,9 @@ async function maybePostWebhook(){
   if (!isLikelyAppsScriptExec(url)) { log('Webhook not attempted: URL does not look like a /exec endpoint'); return; }
   const secret = (state.settings.appsScriptSecret||'').trim();
 
-  // Prefer per-file rows so characters on multiple servers don't collide
-  let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
-    ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
-    : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
+  // Collect latest zone entries (one per character, based on most recent timestamp)
+  const zoneCandidates = buildLatestZoneRows();
+  let zoneRows = Array.isArray(zoneCandidates) ? [...zoneCandidates] : [];
   // Guard: only upsert if this zone timestamp is newer than what we last pushed to the sheet for that source
   try{
     const last = (state.lastPushedZones && typeof state.lastPushedZones === 'object') ? state.lastPushedZones : {};
@@ -832,9 +857,8 @@ async function sendReplaceAllWebhook(opts){
   if (!url || !isLikelyAppsScriptExec(url)) { log('ReplaceAll aborted: invalid Apps Script URL'); return; }
   const secret = (state.settings.appsScriptSecret||'').trim();
 
-  let zoneRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
-    ? Object.values(state.latestZonesByFile).map(v => ({ character: v.character||'', zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }))
-    : Object.entries(state.latestZones || {}).map(([character, v]) => ({ character, zone: v.zone||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'', tz: state.tz||'', source: v.sourceFile||'' }));
+  const zoneCandidates = buildLatestZoneRows();
+  let zoneRows = Array.isArray(zoneCandidates) ? [...zoneCandidates] : [];
   let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
   let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
@@ -1307,10 +1331,9 @@ async function maybeWriteLocalSheets(){
   const dir = state.settings.localSheetsDir && state.settings.localSheetsDir.trim() ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
 
   const zHead = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
-  const zRows = (state.latestZonesByFile && Object.keys(state.latestZonesByFile).length)
-    ? Object.values(state.latestZonesByFile).map(v => [v.character||'', v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||''])
-    : Object.entries(state.latestZones || {}).map(([char, v]) => [char, v.zone||'', v.detectedUtcISO||'', v.detectedLocalISO||'', state.tz||'', v.sourceFile||'']);
-const zRowsOut = filterRowsByFavorites(zRows);
+  const zoneCandidates = buildLatestZoneRows();
+  const zRows = (Array.isArray(zoneCandidates) ? zoneCandidates : []).map(o => [o.character, o.zone, o.utc, o.local, o.tz, o.source]);
+  const zRowsOut = filterRowsByFavorites(zRows);
   let changed = false;
   changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
