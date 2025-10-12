@@ -2,20 +2,24 @@
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>EQ Character Manager — Setup Wizard</title>
+  <title>EQ Character Manager - Setup Wizard</title>
   <style>
+    /* Prevent horizontal overflow without clipping content */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { overflow-x: hidden; }
     :root { --muted:#666; }
     body { font-family: system-ui, sans-serif; margin: 16px; }
     h2 { margin: 6px 0 14px; }
     .step { display:none; }
     .step.active { display:block; }
-    .row { display:flex; gap:10px; align-items:center; margin: 10px 0; }
-    .row > * { flex: 1; }
+    .row { display:flex; gap:10px; align-items:center; margin: 10px 0; min-width: 0; }
+    .row > * { flex: 1; min-width: 0; }
     input[type="text"], input[type="password"] { width:100%; padding:8px; }
+    input[type="text"], input[type="password"], button { max-width: 100%; }
     button { padding:8px 12px; }
     .note { color: var(--muted); font-size: 12px; }
-    .actions { display:flex; justify-content: space-between; gap:10px; margin-top: 16px; }
-    .actions .spacer { flex:1 }
+    .actions { display:flex; justify-content: space-between; gap:10px; margin-top: 16px; width: 100%; }
+    .actions .spacer { flex:1; min-width: 0; }
     .invalid { outline: 2px solid #d33; }
     ol { padding-left: 18px; }
     .small { font-size:12px; color:#444; }
@@ -116,16 +120,30 @@
       if (s===4) return true; // local CSV optional; explain below
       return true;
     }
-    function openSheetsNew(){ window.EQCM.openExternal('https://sheets.new'); }
+    async function openSheetsNew(){
+      // Use a direct Google Sheets create URL for broader compatibility
+      // Some environments block or fail to resolve the .new domain
+      const url = 'https://docs.google.com/spreadsheets/u/0/create';
+      try{
+        const ok = await window.EQCM.openExternal(url);
+        if (!ok){
+          // Fallback: attempt to open in a new window/tab
+          try { window.open(url, '_blank'); } catch {}
+        }
+      } catch {
+        try { window.open(url, '_blank'); } catch {}
+      }
+    }
     function openAppsScriptHome(){ window.EQCM.openExternal('https://script.google.com/home'); }
     function openDocs(){ window.EQCM.openExternal('https://developers.google.com/apps-script/guides/web'); }
+    async function copyCodeGs(){ try { await window.EQCM.copyCodeGs(); } catch {} }
   </script>
 </head>
 <body>
   <h2>Setup Wizard</h2>
 
   <div id="step0" class="step">
-    <h3>1) Create your Google Sheet</h3>
+    <h3>1. Create your Google Sheet</h3>
     <p class="small">Create a spreadsheet that will hold Zone Tracker, CoV Faction, and inventory tabs.</p>
     <div class="row">
       <button onclick="openSheetsNew()">Create new sheet</button>
@@ -137,17 +155,20 @@
   </div>
 
   <div id="step1" class="step">
-    <h3>2) Deploy the Apps Script</h3>
+    <h3>2. Deploy the Apps Script</h3>
     <p class="small">This script receives updates from the app and writes to your sheet.</p>
     <ol class="small">
       <li>In your Google Sheet, open Extensions → Apps Script.</li>
-      <li>Paste the provided Code.gs from the app’s docs and deploy as Web app.</li>
+      <img src="/assets/apps_script_screenshot.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
+      <img src="/assets/apps_script_screenshot2.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
+      <li>Copy provided Code.gs</li>
+      <div class="row">
+        <button onclick="copyCodeGs()">Copy Code.gs</button>
+        <div class="note">Copies the Apps Script source to your clipboard.</div>
+    </div>
+      <li>Paste the provided Code.gs and deploy as Web app.</li>
       <li>Copy the Web app <b>/exec</b> URL.</li>
     </ol>
-    <div class="row">
-      <button onclick="openDocs()">View Apps Script docs</button>
-      <button onclick="openAppsScriptHome()">Open Apps Script</button>
-    </div>
     <label>Apps Script /exec URL</label>
     <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
     <div class="note">Paste the exact /exec URL from your deployment.</div>

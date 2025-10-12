@@ -5,7 +5,8 @@ contextBridge.exposeInMainWorld('EQCM', {
   setSettings: (payload) => ipcRenderer.invoke('settings:set', payload),
   browseFolder: (which) => ipcRenderer.invoke('settings:browseFolder', which),
   deriveSheetId: (url) => ipcRenderer.invoke('settings:deriveSheetId', url),
-  openExternal: (url) => shell.openExternal(url),
+  // Route external opens via main for reliability
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   getCovLists: () => ipcRenderer.invoke('cov:getLists'),
   replaceAll: (opts) => ipcRenderer.invoke('advanced:replaceAll', opts||{}),
   replaceAllForce: () => ipcRenderer.invoke('advanced:replaceAll', { force: true }),
@@ -15,6 +16,7 @@ contextBridge.exposeInMainWorld('EQCM', {
   getRaidKitCounts: (character) => ipcRenderer.invoke('raidkit:counts', character)
   ,copyPlayersLatest: () => ipcRenderer.invoke('players:copyLatest')
   ,getSheetCharacters: () => ipcRenderer.invoke('favorites:listFromSheet')
+  ,copyCodeGs: () => ipcRenderer.invoke('docs:copyCodeGs')
 });
 
 ipcRenderer.on('settings:discoveredChars', (_e, chars) => {

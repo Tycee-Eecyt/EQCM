@@ -1862,6 +1862,19 @@ ipcMain.handle('settings:deriveSheetId', async (evt, url) => {
   } catch { return { sheetId: '' }; }
 });
 
+// Centralize external URL opening in main for reliability
+ipcMain.handle('shell:openExternal', async (_evt, url) => {
+  try {
+    const u = String(url || '').trim();
+    if (!u) return false;
+    const result = await Promise.resolve(shell.openExternal(u));
+    return (typeof result === 'undefined') ? true : !!result;
+  } catch (e) {
+    try { log('shell:openExternal error', e && e.message || e); } catch {}
+    return false;
+  }
+});
+
 ipcMain.handle('settings:set', async (evt, payload) => {
   ensureSettings();
   // Capture previous favorites state to detect changes
@@ -1955,6 +1968,20 @@ ipcMain.handle('settings:browseFolder', async (evt, which) => {
   if (which === 'localSheetsDir') state.settings.localSheetsDir = p;
   saveSettings(); rebuildTray();
   return { path: p };
+});
+
+// Copy bundled docs/Code.gs to clipboard and notify
+ipcMain.handle('docs:copyCodeGs', async () => {
+  try {
+    const fp = path.join(__dirname, 'docs', 'Code.gs');
+    const code = fs.readFileSync(fp, 'utf8');
+    clipboard.writeText(code);
+    try { (new Notification({ title: 'Copied', body: 'Code.gs copied to clipboard.' })).show(); } catch {}
+    return { ok: true };
+  } catch (e) {
+    try { dialog.showMessageBox({ type:'error', buttons:['OK'], title:'Copy Failed', message:'Could not copy Code.gs', detail:String(e && e.message || e) }); } catch {}
+    return { ok:false, error: String(e && e.message || e) };
+  }
 });
 app.whenReady().then(() => {
   try { ensureShieldIco(); } catch {}
