@@ -159,13 +159,16 @@
     <p class="small">This script receives updates from the app and writes to your sheet.</p>
     <ol class="small">
       <li>In your Google Sheet, open Extensions → Apps Script.</li>
+      <img src="/assets/apps_script_screenshot.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
+      <img src="/assets/apps_script_screenshot2.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
+      <li>Copy provided Code.gs</li>
+      <div class="row">
+        <button onclick="copyCodeGs()">Copy Code.gs</button>
+        <div class="note">Copies the Apps Script source to your clipboard.</div>
+    </div>
       <li>Paste the provided Code.gs and deploy as Web app.</li>
       <li>Copy the Web app <b>/exec</b> URL.</li>
     </ol>
-    <div class="row">
-      <button onclick="copyCodeGs()">Copy Code.gs</button>
-      <div class="note">Copies the Apps Script source to your clipboard.</div>
-    </div>
     <label>Apps Script /exec URL</label>
     <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
     <div class="note">Paste the exact /exec URL from your deployment.</div>
