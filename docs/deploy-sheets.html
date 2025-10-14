@@ -44,7 +44,8 @@ const CONFIG = {
   SECRET: '',              // Optional: set a shared secret string; leave blank to disable check
   ZONES_SHEET: 'Zone Tracker',
   FACTION_SHEET: 'CoV Faction',
-  INV_SUMMARY_SHEET: 'Inventory Summary',
+  // Inventory summary tab name
+  INV_SUMMARY_SHEET: 'Raid Kit',
   INV_ITEMS_SHEET: 'Inventory Items' // optional catch-all
 };
 
@@ -63,18 +64,22 @@ function doPost(e){
       replaceAll_(ss, body);
       return respond_({ ok: true, mode: 'replaceAll' });
     }
-    // Replace CoV Faction tab with EXACT CSV contents (only supported way to modify factions)
+    if (body.action === 'listCharacters'){
+      const res = listCharacters_(ss);
+      return respond_(res);
+    }
+    // Replace CoV Faction tab with EXACT CSV contents
     if (body.action === 'replaceFactionsCsv'){
       const csv = String(body.csv || '');
       if (!csv) return respond_({ ok:false, error: 'Missing csv' }, 400);
       const res = replaceFactionsCsv_(ss, csv);
       return respond_({ ok: true, mode: 'replaceFactionsCsv', rows: res.rows, cols: res.cols });
     }
-    // Block JSON-based faction replaces to avoid accidental overwrites from old clients
+    // Block JSON writes to factions: accept only CSV action above
     if (body.action === 'replaceFactions'){
       return respond_({ ok:false, error: 'Factions JSON disabled; use action=replaceFactionsCsv' }, 403);
     }
-    // Optional bulk JSON import for other tabs (faster path); CoV Faction is guarded and skipped.
+    // Optional bulk JSON import for other tabs (faster path). CoV Faction is guarded and skipped here.
     if (body.action === 'jsonImport'){
       const res = jsonImport_(ss, body);
       return respond_(Object.assign({ ok:true, mode:'jsonImport' }, res));
@@ -82,8 +87,8 @@ function doPost(e){
 
     const upserts = body.upserts || {};
     if (upserts.zones)    upsertZones_(ss, upserts.zones);
-    // Factions JSON is ignored; use replaceFactionsCsv action to modify CoV Faction.
-    if (upserts.inventory) upsertInventorySummary_(ss, upserts.inventory);
+    // Factions JSON is ignored by design; only CSV is accepted to modify the CoV Faction tab
+    if (upserts.inventory) upsertInventorySummary_(ss, upserts.inventory, body.meta || {});
     if (upserts.inventoryDetails) upsertInventoryDetails_(ss, upserts.inventoryDetails);
     return respond_({ ok: true });
   }catch(err){
@@ -106,7 +111,7 @@ function getOrMakeSheet_(ss, name){
 
 function ensureHeader_(sh, header){
   const existing = sh.getRange(1,1,1,sh.getMaxColumns()).getValues()[0].filter(String);
-  if (existing.join('\\t') !== header.join('\\t')){
+  if (existing.join('\t') !== header.join('\t')){
     sh.clearContents();
     sh.getRange(1,1,1,header.length).setValues([header]);
   }
@@ -171,33 +176,71 @@ function replaceFactions_(ss, rows){
   writeAllRows_(sh, header, data);
 }
 
-function upsertInventorySummary_(ss, rows){
-  const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                  'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
-                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\\'s Mask'];
+// Replace CoV Faction with the EXACT contents of a CSV string
+function replaceFactionsCsv_(ss, csvText){
+  const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
+  const rows = Utilities.parseCsv(csvText || '');
+  // Clear and write exactly what the CSV contains (including header row as-is)
+  sh.clearContents();
+  if (rows && rows.length){
+    sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);
+    return { rows: rows.length, cols: rows[0].length };
+  }
+  return { rows: 0, cols: 0 };
+}
+
+function upsertInventorySummary_(ss, rows, meta){
+  const fixedHeaders = (meta && meta.invFixedHeaders && meta.invFixedHeaders.length) ? meta.invFixedHeaders : [
+    'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
+    'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+    'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'
+  ];
+  const fixedProps = (meta && meta.invFixedProps && meta.invFixedProps.length) ? meta.invFixedProps : [
+    'vialVeliumVapors','leatherfootSkullcap','shinyBrassIdol','ringOfShadowsCount',
+    'reaperOfTheDead','pearlCount','peridotCount','tenDosePotionOfStingingWortCount','pegasusFeatherCloak',
+    'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
+  ];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
+  // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
+  const extrasSet = new Set();
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = Array.from(extrasSet);
+  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = rows.map(o => [o.character,o.file,o.logFile,o.created,o.modified,
-                              o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
-                              o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
-                              o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
-                              o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                              o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ]);
+  const data = (rows||[]).map(o => {
+    const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
+    const ex = o.kitExtras||{};
+    const extraVals = extras.map(h => ex[h] ?? '');
+    return baseVals.concat(extraVals);
+  });
   upsertRowsByKey_(sh, header, 'Character', data);
 }
 
-function replaceInventorySummary_(ss, rows){
-  const header = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)',
-                  'Vial of Velium Vapors','Velium Vial Count','Leatherfoot Raider Skullcap','Shiny Brass Idol',
-                  'Ring of Shadows Count','Reaper of the Dead','Pearl Count','Peridot Count',
-                  'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\\'s Mask'];
+function replaceInventorySummary_(ss, rows, meta){
+  const fixedHeaders = (meta && meta.invFixedHeaders && meta.invFixedHeaders.length) ? meta.invFixedHeaders : [
+    'Vial of Velium Vapors','Leatherfoot Raider Skullcap','Shiny Brass Idol','Ring of Shadows Count',
+    'Reaper of the Dead','Pearl Count','Peridot Count','10 Dose Potion of Stinging Wort Count','Pegasus Feather Cloak',
+    'MB Class Five','MB Class Four','MB Class Three','MB Class Two','MB Class One','Larrikan\'s Mask'
+  ];
+  const fixedProps = (meta && meta.invFixedProps && meta.invFixedProps.length) ? meta.invFixedProps : [
+    'vialVeliumVapors','leatherfootSkullcap','shinyBrassIdol','ringOfShadowsCount',
+    'reaperOfTheDead','pearlCount','peridotCount','tenDosePotionOfStingingWortCount','pegasusFeatherCloak',
+    'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
+  ];
+  const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
+  const extrasSet = new Set();
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = Array.from(extrasSet);
+  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = (rows||[]).map(o => [o.character,o.file,o.logFile,o.created,o.modified,
-                              o.raidKit?.vialVeliumVapors||'', o.raidKit?.veliumVialCount||0, o.raidKit?.leatherfootSkullcap||'',
-                              o.raidKit?.shinyBrassIdol||'', o.raidKit?.ringOfShadowsCount||0, o.raidKit?.reaperOfTheDead||'',
-                              o.raidKit?.pearlCount||0, o.raidKit?.peridotCount||0,
-                              o.raidKit?.mbClassFive||0, o.raidKit?.mbClassFour||0, o.raidKit?.mbClassThree||0,
-                              o.raidKit?.mbClassTwo||0, o.raidKit?.mbClassOne||0, o.raidKit?.larrikansMask||'' ]);
+  const data = (rows||[]).map(o => {
+    const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
+    const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
+    const ex = o.kitExtras||{};
+    const extraVals = extras.map(h => ex[h] ?? '');
+    return baseVals.concat(extraVals);
+  });
   writeAllRows_(sh, header, data);
 }
 
@@ -229,9 +272,31 @@ function replaceInventoryDetails_(ss, rows){
 function replaceAll_(ss, body){
   const up = body.upserts || body || {};
   if (up.zones)    replaceZones_(ss, up.zones);
-  // Factions JSON is ignored; use replaceFactionsCsv instead
-  if (up.inventory) replaceInventorySummary_(ss, up.inventory);
+  // Factions JSON is ignored; use replaceFactionsCsv action instead
+  if (up.inventory) replaceInventorySummary_(ss, up.inventory, body.meta || {});
   if (up.inventoryDetails) replaceInventoryDetails_(ss, up.inventoryDetails);
+}
+
+// Return unique character names currently present on any of the primary tabs.
+function listCharacters_(ss){
+  try{
+    const tabs = [CONFIG.ZONES_SHEET, CONFIG.FACTION_SHEET, CONFIG.INV_SUMMARY_SHEET];
+    const set = new Set();
+    tabs.forEach(name => {
+      const sh = ss.getSheetByName(name);
+      if (!sh) return;
+      const data = sh.getDataRange().getValues();
+      if (!data || data.length < 2) return; // header + at least one row
+      const header = data[0];
+      const idx = header.indexOf('Character');
+      if (idx < 0) return;
+      for (let r=1; r<data.length; r++){
+        const n = String(data[r][idx]||'').trim();
+        if (n) set.add(n);
+      }
+    });
+    return { ok:true, characters: Array.from(set).sort() };
+  } catch(err){ return { ok:false, error: String(err && err.message || err) }; }
 }
 
 // Create a NEW sheet tab with a character's inventory (similar to screenshot)
@@ -247,7 +312,7 @@ function pushInventorySheet_(ss, body){
   while (ss.getSheetByName(name)) { name = baseName + ' (' + (++n) + ')'; }
   const sh = ss.insertSheet(name);
 
-  // Header rows (A1:D1, A2:D2) to match screenshot layout
+  // Header rows (A1:D1, A2:D2)
   sh.getRange(1,1,1,4).setValues([['Inventory for','File','Created On','Modified On']]);
   sh.getRange(2,1,1,4).setValues([[character, info.file || '', info.created || '', info.modified || '']]);
 
@@ -265,18 +330,6 @@ function pushInventorySheet_(ss, body){
   sh.autoResizeColumns(1, header.length);
 
   return { ok:true, sheet: name };
-}
-
-// Replace CoV Faction with the EXACT contents of a CSV string
-function replaceFactionsCsv_(ss, csvText){
-  const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
-  const rows = Utilities.parseCsv(csvText || '');
-  sh.clearContents();
-  if (rows && rows.length){
-    sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);
-    return { rows: rows.length, cols: rows[0].length };
-  }
-  return { rows: 0, cols: 0 };
 }
 
 // Bulk JSON import for non-faction tabs. Each tab: { sheet(name), header:[], rows:[[]], mode:'replace'|'append' }
