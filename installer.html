@@ -88,6 +88,7 @@
       }catch{}
       attachHandlers();
       showStep(0);
+      syncWalkthroughCaptions();
     }
     function attachHandlers(){
       ['sheetUrl','appsScriptUrl','logsDir','baseDir','localSheetsDir'].forEach(id => {
@@ -159,18 +160,30 @@
 
     let walkthroughModal = null;
     let lastWalkthroughFocus = null;
-    function showWalkthroughImage(src, caption){
+    function showWalkthroughImage(target, caption){
       try{
         walkthroughModal = walkthroughModal || byId('walkthroughModal');
         if (!walkthroughModal) return;
         const img = byId('walkthroughModalImg');
         const cap = byId('walkthroughModalCaption');
-        if (img){ img.src = src; img.alt = caption || ''; }
+        let src = '';
+        let desc = caption || '';
+        if (typeof target === 'string'){
+          src = target;
+          if (!desc) desc = '';
+          lastWalkthroughFocus = document.activeElement;
+        } else if (target && typeof target.getAttribute === 'function'){
+          src = target.getAttribute('src') || '';
+          desc = target.getAttribute('data-desc') || desc || '';
+          lastWalkthroughFocus = target;
+        } else {
+          return;
+        }
+        if (img){ img.src = src; img.alt = desc || ''; }
         if (cap){
-          if (caption){ cap.textContent = caption; cap.style.display=''; }
+          if (desc){ cap.textContent = desc; cap.style.display=''; }
           else { cap.textContent=''; cap.style.display='none'; }
         }
-        lastWalkthroughFocus = document.activeElement;
         walkthroughModal.classList.add('open');
         walkthroughModal.setAttribute('aria-hidden','false');
         const closeBtn = walkthroughModal.querySelector('.walkthrough-modal__close');
@@ -192,6 +205,18 @@
       }catch{}
     }
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeWalkthroughImage(); });
+    function syncWalkthroughCaptions(){
+      try{
+        document.querySelectorAll('.walkthrough-gallery figure').forEach(fig => {
+          const img = fig.querySelector('img[data-desc]');
+          const cap = fig.querySelector('figcaption');
+          if (img && cap){
+            const text = img.getAttribute('data-desc') || '';
+            cap.textContent = text;
+          }
+        });
+      }catch{}
+    }
   </script>
 </head>
 <body>
@@ -225,73 +250,73 @@
     <div class="walkthrough-gallery">
       <figure>
         <span class="step-badge">1</span>
-        <img src="./assets/apps_script_screenshot.png" alt="Open the Apps Script editor" onclick="showWalkthroughImage('./assets/apps_script_screenshot.png', 'Extensions → Apps Script opens the project linked to your sheet.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot.png', 'Extensions → Apps Script opens the project linked to your sheet.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot.png" alt="Open the Apps Script editor" data-desc="Extensions → Apps Script opens the project linked to your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>Extensions → Apps Script opens the project linked to your sheet.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">2</span>
-        <img src="./assets/apps_script_screenshot2.png" alt="Apps Script project landing screen" onclick="showWalkthroughImage('./assets/apps_script_screenshot2.png', 'Apps Script loads with the default Code.gs placeholder file.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot2.png', 'Apps Script loads with the default Code.gs placeholder file.'); }" role="button" tabindex="0" />
-        <figcaption>Apps Script loads with the default <code>Code.gs</code> placeholder file.</figcaption>
+        <img src="./assets/apps_script_screenshot2.png" alt="Apps Script project landing screen" data-desc="Apps Script loads with the default Code.gs placeholder file." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Apps Script loads with the default Code.gs placeholder file.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">3</span>
-        <img src="./assets/apps_script_screenshot3.png" alt="Replace the default code" onclick="showWalkthroughImage('./assets/apps_script_screenshot3.png', 'Delete the sample myFunction content so the file is empty.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot3.png', 'Delete the sample myFunction content so the file is empty.'); }" role="button" tabindex="0" />
-        <figcaption>Delete the sample <code>myFunction</code> content so the file is empty. Paste the provided *Code.gs* snippet into the editor and save.</figcaption>
+        <img src="./assets/apps_script_screenshot3.png" alt="Replace the default code" data-desc="Delete the sample myFunction content so the file is empty." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Delete the sample myFunction content so the file is empty.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">4</span>
-        <img src="./assets/apps_script_screenshot4.png" alt="Paste the provided Code.gs" onclick="showWalkthroughImage('./assets/apps_script_screenshot4.png', 'Paste the provided Code.gs snippet into the editor and save.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot4.png', 'Paste the provided Code.gs snippet into the editor and save.'); }" role="button" tabindex="0" />
-        <figcaption>Use Deploy → New deployments to start publishing the script.</figcaption>
+        <img src="./assets/apps_script_screenshot4.png" alt="Paste the provided Code.gs" data-desc="Paste the provided Code.gs snippet into the editor and save." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Paste the provided Code.gs snippet into the editor and save.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">5</span>
-        <img src="./assets/apps_script_screenshot5.png" alt="Open the Deploy menu" onclick="showWalkthroughImage('./assets/apps_script_screenshot5.png', 'Use Deploy → Manage deployments to start publishing the script.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot5.png', 'Use Deploy → Manage deployments to start publishing the script.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot5.png" alt="Open the Deploy menu" data-desc="Use Deploy → Manage deployments to start publishing the script." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>Select <strong>Configuration</strong> to set up a fresh Web app.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">6</span>
-        <img src="./assets/apps_script_screenshot6.png" alt="Choose new deployment" onclick="showWalkthroughImage('./assets/apps_script_screenshot6.png', 'Select New deployment to configure a fresh Web app.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot6.png', 'Select New deployment to configure a fresh Web app.'); }" role="button" tabindex="0" />
-        <figcaption>Select <strong>New deployment</strong> to configure a fresh Web app.</figcaption>
+        <img src="./assets/apps_script_screenshot6.png" alt="Choose new deployment" data-desc="Select New deployment to configure a fresh Web app." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Select New deployment to configure a fresh Web app.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">7</span>
-        <img src="./assets/apps_script_screenshot7.png" alt="Configure the deployment" onclick="showWalkthroughImage('./assets/apps_script_screenshot7.png', 'Name the deployment so you can recognize it later.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot7.png', 'Name the deployment so you can recognize it later.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot7.png" alt="Configure the deployment" data-desc="Name the deployment so you can recognize it later." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>Name the deployment so you can recognize it later.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">8</span>
-        <img src="./assets/apps_script_screenshot8.png" alt="Set Web app access levels" onclick="showWalkthroughImage('./assets/apps_script_screenshot8.png', 'Choose Execute as Me and set access to Anyone with the link.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot8.png', 'Choose Execute as Me and set access to Anyone with the link.'); }" role="button" tabindex="0" />
-        <figcaption>Choose <em>Execute as Me</em> and set access to <em>Anyone with the link</em>.</figcaption>
+        <img src="./assets/apps_script_screenshot8.png" alt="Set Web app access levels" data-desc="Choose Execute as Me and set access to Anyone with the link." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Choose Execute as Me and set access to Anyone with the link.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">9</span>
-        <img src="./assets/apps_script_screenshot9.png" alt="Confirm deployment summary" onclick="showWalkthroughImage('./assets/apps_script_screenshot9.png', 'Review the deployment summary and click Deploy.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot9.png', 'Review the deployment summary and click Deploy.'); }" role="button" tabindex="0" />
-        <figcaption>Review the deployment summary and click <strong>Deploy</strong>.</figcaption>
+        <img src="./assets/apps_script_screenshot9.png" alt="Confirm deployment summary" data-desc="Review the deployment summary and click Deploy." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Review the deployment summary and click Deploy.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">10</span>
-        <img src="./assets/apps_script_screenshot10.png" alt="Review permissions prompt" onclick="showWalkthroughImage('./assets/apps_script_screenshot10.png', 'When prompted, review the permissions required for the script.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot10.png', 'When prompted, review the permissions required for the script.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot10.png" alt="Review permissions prompt" data-desc="When prompted, review the permissions required for the script." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>When prompted, review the permissions required for the script.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">11</span>
-        <img src="./assets/apps_script_screenshot11.png" alt="Google authorization warning" onclick="showWalkthroughImage('./assets/apps_script_screenshot11.png', 'Approve the Google warning by choosing Advanced → Go to project.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot11.png', 'Approve the Google warning by choosing Advanced → Go to project.'); }" role="button" tabindex="0" />
-        <figcaption>Approve the Google warning by choosing <strong>Advanced → Go to project</strong>.</figcaption>
+        <img src="./assets/apps_script_screenshot11.png" alt="Google authorization warning" data-desc="Approve the Google warning by choosing Advanced → Go to project." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Approve the Google warning by choosing Advanced → Go to project.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">12</span>
-        <img src="./assets/apps_script_screenshot12.png" alt="Grant script permissions" onclick="showWalkthroughImage('./assets/apps_script_screenshot12.png', 'Grant the requested scopes so the web app can read and write your sheet.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot12.png', 'Grant the requested scopes so the web app can read and write your sheet.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot12.png" alt="Grant script permissions" data-desc="Grant the requested scopes so the web app can read and write your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>Grant the requested scopes so the web app can read and write your sheet.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">13</span>
-        <img src="./assets/apps_script_screenshot13.png" alt="Deployment success dialog" onclick="showWalkthroughImage('./assets/apps_script_screenshot13.png', 'After authorizing, you’ll see a success dialog with the new Web app URL.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot13.png', 'After authorizing, you’ll see a success dialog with the new Web app URL.'); }" role="button" tabindex="0" />
+        <img src="./assets/apps_script_screenshot13.png" alt="Deployment success dialog" data-desc="After authorizing, you’ll see a success dialog with the new Web app URL." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
         <figcaption>After authorizing, you’ll see a success dialog with the new Web app URL.</figcaption>
       </figure>
       <figure>
         <span class="step-badge">14</span>
-        <img src="./assets/apps_script_screenshot14.png" alt="Copy the Web app exec link" onclick="showWalkthroughImage('./assets/apps_script_screenshot14.png', 'Copy the /exec link and paste it into the wizard field below.')" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage('./assets/apps_script_screenshot14.png', 'Copy the /exec link and paste it into the wizard field below.'); }" role="button" tabindex="0" />
-        <figcaption>Copy the <code>/exec</code> link and paste it into the wizard field below.</figcaption>
+        <img src="./assets/apps_script_screenshot14.png" alt="Copy the Web app exec link" data-desc="Copy the /exec link and paste it into the wizard field below." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Copy the /exec link and paste it into the wizard field below.</figcaption>
       </figure>
     </div>
     <label>Apps Script /exec URL</label>
