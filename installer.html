@@ -24,6 +24,9 @@
     ol { padding-left: 18px; }
     .small { font-size:12px; color:#444; }
     .callout { margin-top:12px; padding:12px 14px; border-left:4px solid #2563eb; background:#f0f6ff; color:#1e3a8a; font-size:13px; font-weight:600; }
+    .inline-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid #2563eb; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:600; cursor:pointer; transition:background 0.15s ease, transform 0.15s ease; }
+    .inline-btn:hover { background:#1d4ed8; transform:translateY(-1px); }
+    .inline-btn:focus-visible { outline:3px solid #bfdbfe; outline-offset:2px; }
     .walkthrough-gallery { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:18px; margin:18px 0 8px; }
     .walkthrough-gallery figure { position:relative; background:#f8f9fb; border:1px solid #d1d9e6; border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:14px; box-shadow:0 3px 6px rgba(15,23,42,0.12); }
     .walkthrough-gallery img { width:100%; border-radius:6px; border:1px solid #c4ccd9; cursor:zoom-in; transition:transform 0.18s ease; }
@@ -212,14 +215,11 @@
     <ol class="small">
       <li>In your Google Sheet, open Extensions → Apps Script.</li>
       <li>
-        Copy the provided Code.gs.
-        <div class="row">
-          <button onclick="copyCodeGs()">Copy Code.gs</button>
-          <div class="note">Copies the Apps Script source to your clipboard.</div>
-        </div>
+        Copy the provided <button class="inline-btn" onclick="copyCodeGs()" type="button">Code.gs</button>.
+        <div class="note">Copies the Apps Script source to your clipboard.</div>
       </li>
-      <li>Paste the provided Code.gs, then deploy the project as a Web app.</li>
-      <li>Copy the Web app <b>/exec</b> URL.</li>
+      <li>Paste the provided Code.gs into the editor, then deploy the project as a Web app.</li>
+      <li>Copy the Web app <b>/exec</b> URL and paste it below.</li>
     </ol>
     <div class="callout">Walkthrough: follow the numbered screenshots below to deploy your Apps Script.</div>
     <div class="walkthrough-gallery">
