@@ -23,10 +23,25 @@
     .invalid { outline: 2px solid #d33; }
     ol { padding-left: 18px; }
     .small { font-size:12px; color:#444; }
-    .screenshot-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin:12px 0; }
-    .screenshot-grid img { width:100%; border:1px solid #ccc; border-radius:4px; }
-    details.walkthrough { margin-top:12px; }
-    details.walkthrough summary { cursor:pointer; font-weight:600; }
+    .callout { margin-top:12px; padding:12px 14px; border-left:4px solid #2563eb; background:#f0f6ff; color:#1e3a8a; font-size:13px; font-weight:600; }
+    .inline-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid #2563eb; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:600; cursor:pointer; transition:background 0.15s ease, transform 0.15s ease; }
+    .inline-btn:hover { background:#1d4ed8; transform:translateY(-1px); }
+    .inline-btn:focus-visible { outline:3px solid #bfdbfe; outline-offset:2px; }
+    .walkthrough-gallery { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:18px; margin:18px 0 8px; }
+    .walkthrough-gallery figure { position:relative; background:#f8f9fb; border:1px solid #d1d9e6; border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:14px; box-shadow:0 3px 6px rgba(15,23,42,0.12); }
+    .walkthrough-gallery img { width:100%; border-radius:6px; border:1px solid #c4ccd9; cursor:zoom-in; transition:transform 0.18s ease; }
+    .walkthrough-gallery img:focus-visible { outline:3px solid #2563eb; outline-offset:2px; }
+    .walkthrough-gallery img:hover { transform:scale(1.02); }
+    .walkthrough-gallery figcaption { font-size:13px; color:#1f2937; line-height:1.5; font-weight:600; }
+    .step-badge { position:absolute; top:14px; left:18px; background:#2563eb; color:#fff; font-size:13px; font-weight:700; padding:5px 11px; border-radius:999px; letter-spacing:0.03em; }
+    .walkthrough-modal { position:fixed; inset:0; background:rgba(15,23,42,0.85); display:flex; align-items:center; justify-content:center; padding:40px 32px; z-index:999; opacity:0; pointer-events:none; transition:opacity 0.2s ease; }
+    .walkthrough-modal.open { opacity:1; pointer-events:auto; }
+    .walkthrough-modal__inner { position:relative; max-width:1200px; width:100%; max-height:90vh; background:#0f172a; border-radius:12px; padding:28px 32px 32px; display:flex; flex-direction:column; gap:18px; box-shadow:0 12px 36px rgba(15,23,42,0.45); }
+    .walkthrough-modal__img { width:100%; max-height:70vh; object-fit:contain; border-radius:8px; background:#1e293b; }
+    .walkthrough-modal__caption { font-size:15px; color:#f8fafc; line-height:1.6; }
+    .walkthrough-modal__close { position:absolute; top:12px; right:12px; background:rgba(15,23,42,0.6); color:#f8fafc; border:none; border-radius:999px; width:36px; height:36px; font-size:22px; cursor:pointer; transition:background 0.15s ease; }
+    .walkthrough-modal__close:hover { background:rgba(37,99,235,0.75); }
+    .walkthrough-modal__close:focus-visible { outline:3px solid #bfdbfe; outline-offset:2px; }
   </style>
   <script>
     function byId(id){ return document.getElementById(id); }
@@ -73,6 +88,7 @@
       }catch{}
       attachHandlers();
       showStep(0);
+      syncWalkthroughCaptions();
     }
     function attachHandlers(){
       ['sheetUrl','appsScriptUrl','logsDir','baseDir','localSheetsDir'].forEach(id => {
@@ -141,6 +157,66 @@
     function openAppsScriptHome(){ window.EQCM.openExternal('https://script.google.com/home'); }
     function openDocs(){ window.EQCM.openExternal('https://developers.google.com/apps-script/guides/web'); }
     async function copyCodeGs(){ try { await window.EQCM.copyCodeGs(); } catch {} }
+
+    let walkthroughModal = null;
+    let lastWalkthroughFocus = null;
+    function showWalkthroughImage(target, caption){
+      try{
+        walkthroughModal = walkthroughModal || byId('walkthroughModal');
+        if (!walkthroughModal) return;
+        const img = byId('walkthroughModalImg');
+        const cap = byId('walkthroughModalCaption');
+        let src = '';
+        let desc = caption || '';
+        if (typeof target === 'string'){
+          src = target;
+          if (!desc) desc = '';
+          lastWalkthroughFocus = document.activeElement;
+        } else if (target && typeof target.getAttribute === 'function'){
+          src = target.getAttribute('src') || '';
+          desc = target.getAttribute('data-desc') || desc || '';
+          lastWalkthroughFocus = target;
+        } else {
+          return;
+        }
+        if (img){ img.src = src; img.alt = desc || ''; }
+        if (cap){
+          if (desc){ cap.textContent = desc; cap.style.display=''; }
+          else { cap.textContent=''; cap.style.display='none'; }
+        }
+        walkthroughModal.classList.add('open');
+        walkthroughModal.setAttribute('aria-hidden','false');
+        const closeBtn = walkthroughModal.querySelector('.walkthrough-modal__close');
+        if (closeBtn) closeBtn.focus({ preventScroll:true });
+      }catch{}
+    }
+    function closeWalkthroughImage(){
+      try{
+        walkthroughModal = walkthroughModal || byId('walkthroughModal');
+        if (!walkthroughModal) return;
+        walkthroughModal.classList.remove('open');
+        walkthroughModal.setAttribute('aria-hidden','true');
+        const img = byId('walkthroughModalImg');
+        if (img){ img.src = ''; }
+        if (lastWalkthroughFocus && typeof lastWalkthroughFocus.focus === 'function'){
+          try { lastWalkthroughFocus.focus({ preventScroll:true }); } catch { try { lastWalkthroughFocus.focus(); } catch {} }
+        }
+        lastWalkthroughFocus = null;
+      }catch{}
+    }
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeWalkthroughImage(); });
+    function syncWalkthroughCaptions(){
+      try{
+        document.querySelectorAll('.walkthrough-gallery figure').forEach(fig => {
+          const img = fig.querySelector('img[data-desc]');
+          const cap = fig.querySelector('figcaption');
+          if (img && cap){
+            const text = img.getAttribute('data-desc') || '';
+            cap.textContent = text;
+          }
+        });
+      }catch{}
+    }
   </script>
 </head>
 <body>
@@ -164,35 +240,85 @@
     <ol class="small">
       <li>In your Google Sheet, open Extensions → Apps Script.</li>
       <li>
-        Copy the provided Code.gs.
-        <div class="row">
-          <button onclick="copyCodeGs()">Copy Code.gs</button>
-          <div class="note">Copies the Apps Script source to your clipboard.</div>
-        </div>
+        Copy the provided <button class="inline-btn" onclick="copyCodeGs()" type="button">Code.gs</button>
+        <div class="note">Copies the Apps Script source to your clipboard.</div>
       </li>
-      <li>Paste the provided Code.gs, then deploy the project as a Web app.</li>
-      <li>Copy the Web app <b>/exec</b> URL.</li>
+      <li>Paste the provided Code.gs into the editor, then deploy the project as a Web app.</li>
+      <li>Copy the Web app <b>/exec</b> URL and paste it below.</li>
     </ol>
-    <details class="walkthrough">
-      <summary>Show step-by-step Apps Script screenshots</summary>
-      <div class="note">Follow these captures in order if you want a visual guide.</div>
-      <div class="screenshot-grid">
-        <img src="./assets/apps_script_screenshot.png" alt="Step 1: Open the Apps Script editor"/>
-        <img src="./assets/apps_script_screenshot2.png" alt="Step 2: Apps Script project landing screen"/>
-        <img src="./assets/apps_script_screenshot3.png" alt="Step 3: Replace the default Apps Script code"/>
-        <img src="./assets/apps_script_screenshot4.png" alt="Step 4: Code pasted into the editor"/>
-        <img src="./assets/apps_script_screenshot5.png" alt="Step 5: Deploy menu in the editor"/>
-        <img src="./assets/apps_script_screenshot6.png" alt="Step 6: Choosing a new deployment"/>
-        <img src="./assets/apps_script_screenshot7.png" alt="Step 7: Deployment configuration dialog"/>
-        <img src="./assets/apps_script_screenshot8.png" alt="Step 8: Setting Web app access levels"/>
-        <img src="./assets/apps_script_screenshot9.png" alt="Step 9: Confirming the deployment summary"/>
-        <img src="./assets/apps_script_screenshot10.png" alt="Step 10: Review permissions prompt"/>
-        <img src="./assets/apps_script_screenshot11.png" alt="Step 11: Google authorization warning screen"/>
-        <img src="./assets/apps_script_screenshot12.png" alt="Step 12: Granting script permissions"/>
-        <img src="./assets/apps_script_screenshot13.png" alt="Step 13: Deployment success dialog with exec URL"/>
-        <img src="./assets/apps_script_screenshot14.png" alt="Step 14: Copy the Web app exec link"/>
-      </div>
-    </details>
+    <div class="callout">Walkthrough: follow the numbered screenshots below to deploy your Apps Script.</div>
+    <div class="walkthrough-gallery">
+      <figure>
+        <span class="step-badge">1</span>
+        <img src="./assets/apps_script_screenshot.png" alt="Open the Apps Script editor" data-desc="Extensions → Apps Script opens the project linked to your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Extensions → Apps Script opens the project linked to your sheet.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">2</span>
+        <img src="./assets/apps_script_screenshot2.png" alt="Apps Script project landing screen" data-desc="Apps Script loads with the default Code.gs placeholder file." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Apps Script loads with the default Code.gs placeholder file.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">3</span>
+        <img src="./assets/apps_script_screenshot3.png" alt="Replace the default code" data-desc="Delete the sample myFunction content so the file is empty. Paste the provided Code.gs snippet into the editor." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Delete the sample myFunction content so the file is empty. Paste the provided Code.gs snippet into the editor.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">4</span>
+        <img src="./assets/apps_script_screenshot4.png" alt="Paste the provided Code.gs" data-desc="Use Deploy → New Deployments to start publishing the script." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Use Deploy → New Deployments to start publishing the script.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">5</span>
+        <img src="./assets/apps_script_screenshot5.png" alt="Open the Deploy menu" data-desc="Select Configuration to set up a fresh Web app." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Select <strong>Configuration</strong> to set up a fresh Web app.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">6</span>
+        <img src="./assets/apps_script_screenshot6.png" alt="Choose new deployment" data-desc="Select Configuration → Web App." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Select Configuration → Web App.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">7</span>
+        <img src="./assets/apps_script_screenshot7.png" alt="Configure the deployment" data-desc="Name the deployment so you can recognize it. Choose Execute as Me and set access to Anyone." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Name the deployment so you can recognize it. Choose Execute as Me and set access to Anyone.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">8</span>
+        <img src="./assets/apps_script_screenshot8.png" alt="Set Web app access levels" data-desc="Select Authorize access." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Select Authorize access.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">9</span>
+        <img src="./assets/apps_script_screenshot9.png" alt="Confirm deployment summary" data-desc="Choose your account." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Choose your account.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">10</span>
+        <img src="./assets/apps_script_screenshot10.png" alt="Review permissions prompt" data-desc="Approve the Google warning by choosing Advanced → Go to project." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Approve the Google warning by choosing Advanced → Go to project.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">11</span>
+        <img src="./assets/apps_script_screenshot11.png" alt="Google authorization warning" data-desc="Approve the Google warning by choosing Advanced → Go to project." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Approve the Google warning by choosing Advanced → Go to project.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">12</span>
+        <img src="./assets/apps_script_screenshot12.png" alt="Grant script permissions" data-desc="Grant the requested scopes so the web app can read and write your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Grant the requested scopes so the web app can read and write your sheet.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">13</span>
+        <img src="./assets/apps_script_screenshot13.png" alt="Deployment success dialog" data-desc="Pending the updates." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>Pending the updates.</figcaption>
+      </figure>
+      <figure>
+        <span class="step-badge">14</span>
+        <img src="./assets/apps_script_screenshot14.png" alt="Copy the Web app exec link" data-desc="After authorizing, you’ll see a success dialog with the new Web app URL. Copy the /exec link and paste it into the wizard field below." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
+        <figcaption>After authorizing, you’ll see a success dialog with the new Web app URL. Copy the /exec link and paste it into the wizard field below.</figcaption>
+      </figure>
+    </div>
     <label>Apps Script /exec URL</label>
     <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
     <div class="note">Paste the exact /exec URL from your deployment.</div>
@@ -223,6 +349,14 @@
       <button onclick="pick('localSheetsDir')">Browse…</button>
     </div>
     <div class="note">This folder stores CSV exports. The CoV Faction sheet in Google Sheets is synced from <b>CoV Faction.csv</b> here. If left blank, the app uses its default folder.</div>
+  </div>
+
+  <div id="walkthroughModal" class="walkthrough-modal" role="dialog" aria-modal="true" aria-labelledby="walkthroughModalCaption" aria-hidden="true" onclick="closeWalkthroughImage()">
+    <div class="walkthrough-modal__inner" onclick="event.stopPropagation();">
+      <button type="button" class="walkthrough-modal__close" aria-label="Close walkthrough screenshot" onclick="closeWalkthroughImage()">×</button>
+      <img id="walkthroughModalImg" class="walkthrough-modal__img" src="" alt=""/>
+      <div id="walkthroughModalCaption" class="walkthrough-modal__caption"></div>
+    </div>
   </div>
 
   <div class="actions">
