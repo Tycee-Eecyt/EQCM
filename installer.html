@@ -23,6 +23,10 @@
     .invalid { outline: 2px solid #d33; }
     ol { padding-left: 18px; }
     .small { font-size:12px; color:#444; }
+    .screenshot-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin:12px 0; }
+    .screenshot-grid img { width:100%; border:1px solid #ccc; border-radius:4px; }
+    details.walkthrough { margin-top:12px; }
+    details.walkthrough summary { cursor:pointer; font-weight:600; }
   </style>
   <script>
     function byId(id){ return document.getElementById(id); }
@@ -159,23 +163,43 @@
     <p class="small">This script receives updates from the app and writes to your sheet.</p>
     <ol class="small">
       <li>In your Google Sheet, open Extensions → Apps Script.</li>
-      <img src="/assets/apps_script_screenshot.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
-      <img src="/assets/apps_script_screenshot2.png" alt="Apps Script menu screenshot" style="max-width:100%;border:1px solid #ccc"/>
-      <li>Copy provided Code.gs</li>
-      <div class="row">
-        <button onclick="copyCodeGs()">Copy Code.gs</button>
-        <div class="note">Copies the Apps Script source to your clipboard.</div>
-    </div>
-      <li>Paste the provided Code.gs and deploy as Web app.</li>
+      <li>
+        Copy the provided Code.gs.
+        <div class="row">
+          <button onclick="copyCodeGs()">Copy Code.gs</button>
+          <div class="note">Copies the Apps Script source to your clipboard.</div>
+        </div>
+      </li>
+      <li>Paste the provided Code.gs, then deploy the project as a Web app.</li>
       <li>Copy the Web app <b>/exec</b> URL.</li>
     </ol>
+    <details class="walkthrough">
+      <summary>Show step-by-step Apps Script screenshots</summary>
+      <div class="note">Follow these captures in order if you want a visual guide.</div>
+      <div class="screenshot-grid">
+        <img src="/assets/apps_script_screenshot.png" alt="Step 1: Open the Apps Script editor"/>
+        <img src="/assets/apps_script_screenshot2.png" alt="Step 2: Apps Script project landing screen"/>
+        <img src="/assets/apps_script_screenshot3.png" alt="Step 3: Replace the default Apps Script code"/>
+        <img src="/assets/apps_script_screenshot4.png" alt="Step 4: Code pasted into the editor"/>
+        <img src="/assets/apps_script_screenshot5.png" alt="Step 5: Deploy menu in the editor"/>
+        <img src="/assets/apps_script_screenshot6.png" alt="Step 6: Choosing a new deployment"/>
+        <img src="/assets/apps_script_screenshot7.png" alt="Step 7: Deployment configuration dialog"/>
+        <img src="/assets/apps_script_screenshot8.png" alt="Step 8: Setting Web app access levels"/>
+        <img src="/assets/apps_script_screenshot9.png" alt="Step 9: Confirming the deployment summary"/>
+        <img src="/assets/apps_script_screenshot10.png" alt="Step 10: Review permissions prompt"/>
+        <img src="/assets/apps_script_screenshot11.png" alt="Step 11: Google authorization warning screen"/>
+        <img src="/assets/apps_script_screenshot12.png" alt="Step 12: Granting script permissions"/>
+        <img src="/assets/apps_script_screenshot13.png" alt="Step 13: Deployment success dialog with exec URL"/>
+        <img src="/assets/apps_script_screenshot14.png" alt="Step 14: Copy the Web app exec link"/>
+      </div>
+    </details>
     <label>Apps Script /exec URL</label>
     <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
     <div class="note">Paste the exact /exec URL from your deployment.</div>
   </div>
 
   <div id="step2" class="step">
-    <h3>3) Pick your EverQuest logs folder</h3>
+    <h3>3. Pick your EverQuest logs folder</h3>
     <div class="row">
       <input id="logsDir" type="text" placeholder="Select EverQuest/logs folder"/>
       <button onclick="pick('logsDir')">Browse…</button>
@@ -184,7 +208,7 @@
   </div>
 
   <div id="step3" class="step">
-    <h3>4) Pick your EverQuest base folder</h3>
+    <h3>4. Pick your EverQuest base folder</h3>
     <div class="row">
       <input id="baseDir" type="text" placeholder="Select base EverQuest folder"/>
       <button onclick="pick('baseDir')">Browse…</button>
@@ -193,7 +217,7 @@
   </div>
 
   <div id="step4" class="step">
-    <h3>5) Local CSV output (optional)</h3>
+    <h3>5. Local CSV output (optional)</h3>
     <div class="row">
       <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
       <button onclick="pick('localSheetsDir')">Browse…</button>
