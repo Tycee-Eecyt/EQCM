@@ -1,16 +1,4 @@
-
-function buildCovSetFromSettings(){
-  try{
-    const base = (RAW_COV||"").split(/\r?\n/)
-      .map(s => s.replace(/\s*\([^)]*\)\s*$/, ''))
-      .filter(Boolean);
-    const add = (state.settings?.covAdditions || []).map(String);
-    const rem = new Set((state.settings?.covRemovals || []).map(s => normalizeMobName(String(s))));
-    const merged = base.concat(add).filter(name => !rem.has(normalizeMobName(name)));
-    return new Set(merged.map(normalizeMobName));
-  }catch(e){ log('COV set build error', e); return new Set(); }
-}
-
+﻿
 
 if (typeof getLogId !== 'function') {
   global.getLogId = function(filePath){
