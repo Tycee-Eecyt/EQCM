@@ -1,51 +1,51 @@
-{
-  "name": "eq-character-manager",
-  "version": "2.0.10",
-  "description": "EQ Character Manager — system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
-  "main": "main.js",
-  "author": "Tyler A",
-  "license": "MIT",
-  "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
-    "dist": "node scripts/generate-icon.js && electron-builder --win",
-    "test": "node tests/raidkit-core.test.js"
-  },
-  "devDependencies": {
-    "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
-  },
-  "dependencies": {
-    "electron-updater": "^6.1.7"
-  },
-  "build": {
-    "appId": "com.tyler.eq-character-manager",
-    "productName": "EQ Character Manager",
-    "artifactName": "EQ-Character-Manager-Setup-${version}.${ext}",
-    "files": [
-      "**/*",
-      "!node_modules/.cache/**"
-    ],
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowElevation": true,
-      "allowToChangeInstallationDirectory": false
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Tycee-Eecyt",
-        "repo": "EQCM",
-        "releaseType": "release"
-      }
-    ]
-  }
+﻿{
+    "name":  "eq-character-manager",
+    "version":  "2.0.11",
+    "description":  "EQ Character Manager â€” system tray tool for zones, CoV faction, and inventory (Author: Tyler A)",
+    "main":  "main.js",
+    "author":  "Tyler A",
+    "license":  "MIT",
+    "scripts":  {
+                    "start":  "electron .",
+                    "dev":  "electron .",
+                    "dist":  "node scripts/generate-icon.js \u0026\u0026 electron-builder --win",
+                    "test":  "node tests/raidkit-core.test.js"
+                },
+    "devDependencies":  {
+                            "electron":  "^30.0.0",
+                            "electron-builder":  "^24.13.3"
+                        },
+    "dependencies":  {
+                         "electron-updater":  "^6.1.7"
+                     },
+    "build":  {
+                  "appId":  "com.tyler.eq-character-manager",
+                  "productName":  "EQ Character Manager",
+                  "artifactName":  "EQ-Character-Manager-Setup-${version}.${ext}",
+                  "files":  [
+                                "**/*",
+                                "!node_modules/.cache/**"
+                            ],
+                  "directories":  {
+                                      "output":  "dist"
+                                  },
+                  "win":  {
+                              "target":  "nsis",
+                              "icon":  "build/icon.ico"
+                          },
+                  "nsis":  {
+                               "oneClick":  true,
+                               "perMachine":  false,
+                               "allowElevation":  true,
+                               "allowToChangeInstallationDirectory":  false
+                           },
+                  "publish":  [
+                                  {
+                                      "provider":  "github",
+                                      "owner":  "Tycee-Eecyt",
+                                      "repo":  "EQCM",
+                                      "releaseType":  "release"
+                                  }
+                              ]
+              }
 }

@@ -1,4 +1,4 @@
-﻿// EQ Character Manager — v2.0.10 — Author: Tyler A
+﻿// EQ Character Manager — v2.0.11 — Author: Tyler A
 const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, clipboard, Notification } = require('electron');
 
 // Compatibility: expose a safe global fallback for older code paths
