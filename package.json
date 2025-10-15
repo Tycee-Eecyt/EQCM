@@ -21,6 +21,7 @@
   "build": {
     "appId": "com.tyler.eq-character-manager",
     "productName": "EQ Character Manager",
+    "artifactName": "EQ-Character-Manager-Setup-${version}.${ext}",
     "files": [
       "**/*",
       "!node_modules/.cache/**"
