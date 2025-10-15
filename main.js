@@ -1,5 +1,9 @@
-﻿
+﻿// EQ Character Manager — v2.0.10 — Author: Tyler A
+const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, clipboard, Notification } = require('electron');
 
+// Compatibility: expose a safe global fallback for older code paths
+// that referenced `global.getLogId`. In this file the named helper
+// below is hoisted, so this usually no-ops, but keep for integration.
 if (typeof getLogId !== 'function') {
   global.getLogId = function(filePath){
     try { return require('path').basename(String(filePath||'').trim()); }
@@ -7,8 +11,6 @@ if (typeof getLogId !== 'function') {
   };
 }
 
-// EQ Character Manager — v1.6.0 — Author: Tyler A
-const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, clipboard, Notification } = require('electron');
 // Optional auto-update (electron-updater)
 let autoUpdater = null;
 try { autoUpdater = require('electron-updater').autoUpdater; }
