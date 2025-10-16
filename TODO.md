@@ -10,6 +10,14 @@
   - Record `last_sheet_push` timestamps and clear `needs_sync`.
 - Handle quota management via concurrency limits and exponential backoff on 429 responses; request quota increases from Google if needed.
 - Keep credentials secure; if multi-tenant, store per-tenant sheet IDs/secrets.
+- Use MongoDB Atlas (M0 free tier) as the backing store:
+  - Collections: `users`, `characters`, `zones`, `factions`, `inventory`, `sync_jobs`.
+  - Each payload write inserts raw data plus derived fields (`needs_sync`, `created_at`, `updated_at`, `last_sheet_push`).
+  - Secondary indexes on `needs_sync`, `last_sheet_push`, and `(character_id, type)` to make scheduling efficient.
+  - Implement rate-limited producer (webhook) + consumer (Sheets worker) using a queue collection or an external job runner (e.g., BullMQ connected via Redis).
+  - Configure Atlas triggers or app-level jobs to stagger sync runs (e.g., each character’s job scheduled at a different minute offset).
+  - Monitor Atlas metrics (connections, ops/sec) to ensure M0 limits (e.g., 512MB storage, shared CPU) are not exceeded; upgrade tier if sustained load rises.
+  - Store service account credentials in Atlas Secrets (or Render environment variables) and hydrate them at runtime; never hardcode secrets.
 
 ## Branching / Release Strategy
 
