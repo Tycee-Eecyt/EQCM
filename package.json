@@ -21,7 +21,8 @@
         "dotenv": "^16.4.5",
         "electron-updater": "^6.1.7",
         "express": "^4.19.2",
-        "googleapis": "^131.0.0"
+        "googleapis": "^131.0.0",
+        "mongodb": "^6.7.0"
     },
     "build": {
         "appId": "com.tyler.eq-character-manager",

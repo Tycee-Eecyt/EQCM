@@ -2,6 +2,7 @@ const express = require('express');
 const { google } = require('googleapis');
 const { parse } = require('csv-parse/sync');
 const dotenv = require('dotenv');
+const { storeWebhookPayload, recordRawWebhook } = require('./db/payload-store');
 
 dotenv.config();
 
@@ -765,6 +766,12 @@ app.post('/webhook', async (req, res) => {
       res.status(401).json({ ok: false, error: 'Unauthorized' });
       return;
     }
+    try {
+      await recordRawWebhook(spreadsheetId, body);
+    } catch (err) {
+      console.error('Record raw webhook error', err);
+    }
+
     const sheets = await getSheetsClient();
 
     if (body.action === 'pushInventorySheet') {
@@ -803,6 +810,13 @@ app.post('/webhook', async (req, res) => {
     }
 
     const upserts = body.upserts || {};
+    if (Object.keys(upserts).length) {
+      try {
+        await storeWebhookPayload(spreadsheetId, upserts, body.meta || {});
+      } catch (err) {
+        console.error('Store webhook payload error', err);
+      }
+    }
     if (upserts.zones) await upsertZones(sheets, spreadsheetId, upserts.zones);
     if (upserts.factions) await upsertFactions(sheets, spreadsheetId, upserts.factions);
     if (upserts.inventory) await upsertInventorySummary(sheets, spreadsheetId, upserts.inventory, body.meta || {});
