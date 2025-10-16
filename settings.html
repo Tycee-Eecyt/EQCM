@@ -40,15 +40,15 @@
     <input id="localSheetsDir" type="text" placeholder="Where CSVs are written (optional)"/>
     <button class="btn-inline" onclick="pick('localSheetsDir')">Browse…</button>
 
-    <label>Apps Script /exec URL</label>
-    <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec"/>
+    <label>Webhook URL</label>
+    <input id="webhookUrl" type="text" placeholder="https://your-api.example.com/webhook"/>
     <div></div>
     <label></label>
-    <div class="small">Deploy your Google Apps Script as Web App and paste the /exec URL here.</div>
+    <div class="small">Point this to the hosted EQCM Express server (e.g. https://your-host/webhook).</div>
     <div></div>
 
     <label>Webhook secret (optional)</label>
-    <input id="appsScriptSecret" type="password" placeholder="Shared secret to validate webhook"/>
+    <input id="webhookSecret" type="password" placeholder="Shared secret to validate webhook"/>
     <div></div>
 
     <label>Spreadsheet URL</label>
@@ -69,15 +69,25 @@
     const els = {}; function byId(id){ return els[id] || (els[id] = document.getElementById(id)); }
     async function load(){
       const { settings } = await window.EQCM.getSettings();
-      ['logsDir','baseDir','localSheetsDir','appsScriptUrl','appsScriptSecret','sheetUrl'].forEach(k => byId(k).value = settings[k] || '');
+      byId('logsDir').value = settings.logsDir || '';
+      byId('baseDir').value = settings.baseDir || '';
+      byId('localSheetsDir').value = settings.localSheetsDir || '';
+      byId('webhookUrl').value = settings.webhookUrl || settings.appsScriptUrl || '';
+      byId('webhookSecret').value = settings.webhookSecret || settings.appsScriptSecret || '';
+      byId('sheetUrl').value = settings.sheetUrl || '';
     }
     async function save(){
+      const webhookUrl = byId('webhookUrl').value.trim();
+      const webhookSecret = byId('webhookSecret').value;
       const payload = {
         logsDir: byId('logsDir').value.trim(),
         baseDir: byId('baseDir').value.trim(),
         localSheetsDir: byId('localSheetsDir').value.trim(),
-        appsScriptUrl: byId('appsScriptUrl').value.trim(),
-        appsScriptSecret: byId('appsScriptSecret').value,
+        webhookUrl,
+        webhookSecret,
+        // Temporary legacy fields for backwards compatibility
+        appsScriptUrl: webhookUrl,
+        appsScriptSecret: webhookSecret,
         sheetUrl: byId('sheetUrl').value.trim(),
         // Keep these enabled by default; removed from UI
         localSheetsEnabled: true,

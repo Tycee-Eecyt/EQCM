@@ -82,8 +82,8 @@ const DEFAULT_SETTINGS = {
   favoritesOnly: false,
   perCharSync: {},
 
-  appsScriptUrl: "",
-  appsScriptSecret: "",
+  webhookUrl: "",
+  webhookSecret: "",
   sheetUrl: "",  // spreadsheet link (not a specific tab)
 
   covList: [],
@@ -145,6 +145,16 @@ function ensureSettings(){
   return state.settings;
 }
 
+function getWebhookUrl(){
+  ensureSettings();
+  return String(state.settings.webhookUrl || state.settings.appsScriptUrl || '').trim();
+}
+
+function getWebhookSecret(){
+  ensureSettings();
+  return String(state.settings.webhookSecret || state.settings.appsScriptSecret || '');
+}
+
 function clamp(n, lo, hi){ n = Number(n||0); if (Number.isNaN(n)) n=0; return Math.max(lo, Math.min(hi, n)); }
 function getBackscanBytes(){
   ensureSettings();
@@ -161,6 +171,43 @@ function getBackscanRetryMs(){
 
 function getInvisMaxMs(){ ensureSettings(); return Math.max(1, Number(state.settings.invisMaxMinutes||20)) * 60 * 1000; }
 function getCombatRecentMs(){ ensureSettings(); return Math.max(1, Number(state.settings.combatRecentMinutes||5)) * 60 * 1000; }
+
+function dedupeStandingDisplay(value){
+  const str = String(value || '').trim();
+  if (!str) return '';
+  const baseMatch = str.match(/^([^(]+)/);
+  const base = baseMatch ? baseMatch[1].trim() : '';
+  const parens = str.match(/\([^)]+\)/g) || [];
+  const seen = new Set();
+  const deduped = [];
+  parens.forEach(seg => {
+    const trimmed = seg.trim();
+    if (!trimmed) return;
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      deduped.push(trimmed);
+    }
+  });
+  if (base) {
+    return deduped.length ? base + ' ' + deduped.join(' ') : base;
+  }
+  return deduped.join(' ');
+}
+
+function getSheetIdFromSettings(){
+  ensureSettings();
+  const raw = String(state.settings.sheetUrl || '').trim();
+  if (!raw) return '';
+  const idOnly = /^[A-Za-z0-9_-]{20,}$/;
+  if (idOnly.test(raw)) return raw;
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('d');
+    if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+  } catch {}
+  return '';
+}
 
 // ---------- state/settings I/O ----------
 function loadState(){
@@ -615,25 +662,13 @@ function postJson(url, data, maxRedirects = 3) {
   });
 }
 
-function isLikelyAppsScriptExec(url){
+function isLikelyWebhookUrl(url){
   try{
     const u = new URL(String(url || '').trim());
-    if (u.protocol !== 'https:') return false;
-
-    if (u.hostname === 'script.google.com') {
-      const parts = u.pathname.split('/').filter(Boolean);
-      return (
-        parts.length >= 4 &&
-        parts[0] === 'macros' &&
-        parts[1] === 's' &&
-        /^[A-Za-z0-9_-]+$/.test(parts[2]) &&
-        parts[3] === 'exec'
-      );
-    }
-    if (u.hostname.endsWith('googleusercontent.com')) {
-      return /\/macros\//.test(u.pathname);
-    }
-    return false;
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (!u.hostname) return false;
+    if (!u.pathname || u.pathname === '/') return false;
+    return true;
   } catch { return false; }
 }
 
@@ -693,9 +728,9 @@ function buildLatestZoneRows(){
 async function maybePostWebhook(){
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) return;
-  const url = (state.settings.appsScriptUrl||'').trim(); if (!url) return;
-  if (!isLikelyAppsScriptExec(url)) { log('Webhook not attempted: URL does not look like a /exec endpoint'); return; }
-  const secret = (state.settings.appsScriptSecret||'').trim();
+  const url = getWebhookUrl(); if (!url) return;
+  if (!isLikelyWebhookUrl(url)) { log('Webhook not attempted: URL does not look like a valid webhook endpoint'); return; }
+  const secret = getWebhookSecret();
 
   // Collect latest zone entries (one per character, based on most recent timestamp)
   const zoneCandidates = buildLatestZoneRows();
@@ -714,7 +749,15 @@ async function maybePostWebhook(){
       // Nothing newer to push; still allow inventory upserts below
     }
   } catch {}
-  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({
+    character,
+    standing: v.standing || '',
+    standingDisplay: dedupeStandingDisplay(v.standingDisplay || ''),
+    score: v.score ?? '',
+    mob: v.mob || '',
+    utc: v.detectedUtcISO || '',
+    local: v.detectedLocalISO || ''
+  }));
   let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
     const extras = buildRaidKitExtrasForCharacter(character);
@@ -742,8 +785,10 @@ async function maybePostWebhook(){
 
   // Optionally drive CoV Faction from CSV exactly; when enabled, do not upsert factions JSON
   // Always drive CoV Faction from CSV; do not upsert JSON factions
+  const sheetId = getSheetIdFromSettings();
   const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
   const payload = { secret, upserts };
+  if (sheetId) payload.sheetId = sheetId;
   try {
     const res = await postJson(url, payload);
     const debugWebhook = String(process.env.DEBUG_WEBHOOK || '').toLowerCase();
@@ -771,15 +816,17 @@ async function maybePostWebhook(){
   catch(e){ log('Webhook error', e.message); }
 }
 
-// Fetch unique characters currently present on the Google Sheet via Apps Script
+// Fetch unique characters currently present on the Google Sheet via webhook API
 async function fetchSheetCharacters(){
   try{
     ensureSettings();
-    if (state.settings.remoteSheetsEnabled === false) return { ok:false, error:'remoteSheetsDisabled' };
-    const url = (state.settings.appsScriptUrl||'').trim();
-    if (!url || !isLikelyAppsScriptExec(url)) return { ok:false, error:'invalidAppsScriptUrl' };
-    const secret = (state.settings.appsScriptSecret||'').trim();
-    const payload = { action: 'listCharacters', secret };
+  if (state.settings.remoteSheetsEnabled === false) return { ok:false, error:'remoteSheetsDisabled' };
+  const url = getWebhookUrl();
+  if (!url || !isLikelyWebhookUrl(url)) return { ok:false, error:'invalidWebhookUrl' };
+  const secret = getWebhookSecret();
+  const sheetId = getSheetIdFromSettings();
+  const payload = { action: 'listCharacters', secret };
+  if (sheetId) payload.sheetId = sheetId;
     const res = await postJson(url, payload);
     if (!(res.status >= 200 && res.status < 300)) return { ok:false, error:'http_'+res.status };
     let body = {};
@@ -795,9 +842,10 @@ async function fetchSheetCharacters(){
 async function sendReplaceFactionsCsvFromLocal(){
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) { log('replaceFactionsCsv skipped: remoteSheetsEnabled=false'); return; }
-  const url = (state.settings.appsScriptUrl||'').trim();
-  if (!url || !isLikelyAppsScriptExec(url)) { log('replaceFactionsCsv aborted: invalid Apps Script URL'); throw new Error('Invalid Apps Script URL'); }
-  const secret = (state.settings.appsScriptSecret||'').trim();
+  const url = getWebhookUrl();
+  if (!url || !isLikelyWebhookUrl(url)) { log('replaceFactionsCsv aborted: invalid webhook URL'); throw new Error('Invalid webhook URL'); }
+  const secret = getWebhookSecret();
+  const sheetId = getSheetIdFromSettings();
   // Determine CSV path from localSheetsDir (or default SHEETS_DIR)
   let dir = (state.settings.localSheetsDir && state.settings.localSheetsDir.trim()) ? state.settings.localSheetsDir.trim() : SHEETS_DIR;
   let filePath = path.join(dir, 'CoV Faction.csv');
@@ -810,7 +858,9 @@ async function sendReplaceFactionsCsvFromLocal(){
   const csv = fs.readFileSync(filePath, 'utf8');
   try{
     dlog('replaceFactionsCsv path', filePath);
-    const res = await postJson(url, { secret, action: 'replaceFactionsCsv', csv });
+    const payload = { secret, action: 'replaceFactionsCsv', csv };
+    if (sheetId) payload.sheetId = sheetId;
+    const res = await postJson(url, payload);
     log('ReplaceFactionsCsv response', res.status, (res.body||'').slice(0, 180));
     if (!(res.status >= 200 && res.status < 300)) throw new Error('HTTP ' + res.status);
     return { ok: true };
@@ -836,20 +886,29 @@ function buildRaidKitExtrasForCharacter(character){
   return extras;
 }
 
-// One-shot replace-all import to Apps Script
+// One-shot replace-all import via webhook API
 async function sendReplaceAllWebhook(opts){
   const notify = !!(opts && (opts.notify === true));
   const forceEnv = String(process.env.FORCE_REPLACE_ALL || '').toLowerCase();
   const forceFlag = (opts && opts.force === true) || (forceEnv === '1' || forceEnv === 'true' || forceEnv === 'yes');
   ensureSettings();
   if (state.settings.remoteSheetsEnabled === false) { log('ReplaceAll skipped: remoteSheetsEnabled=false'); return; }
-  const url = (state.settings.appsScriptUrl||'').trim();
-  if (!url || !isLikelyAppsScriptExec(url)) { log('ReplaceAll aborted: invalid Apps Script URL'); return; }
-  const secret = (state.settings.appsScriptSecret||'').trim();
+  const url = getWebhookUrl();
+  if (!url || !isLikelyWebhookUrl(url)) { log('ReplaceAll aborted: invalid webhook URL'); return; }
+  const secret = getWebhookSecret();
+  const sheetId = getSheetIdFromSettings();
 
   const zoneCandidates = buildLatestZoneRows();
   let zoneRows = Array.isArray(zoneCandidates) ? [...zoneCandidates] : [];
-  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({ character, standing: v.standing||'', standingDisplay: v.standingDisplay||'', score: v.score ?? '', mob: v.mob||'', utc: v.detectedUtcISO||'', local: v.detectedLocalISO||'' }));
+  let covRows  = Object.entries(state.covFaction || {}).map(([character, v]) => ({
+    character,
+    standing: v.standing || '',
+    standingDisplay: dedupeStandingDisplay(v.standingDisplay || ''),
+    score: v.score ?? '',
+    mob: v.mob || '',
+    utc: v.detectedUtcISO || '',
+    local: v.detectedLocalISO || ''
+  }));
   let invRows  = Object.entries(state.inventory || {}).map(([character, v]) => {
     const kit = getRaidKitSummary(v.items||[]);
     const extras = buildRaidKitExtrasForCharacter(character);
@@ -877,6 +936,7 @@ async function sendReplaceAllWebhook(opts){
   // Always drive CoV Faction from CSV; do not include JSON factions in ReplaceAll
   const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
   const payload = { secret, action: 'replaceAll', meta, upserts };
+  if (sheetId) payload.sheetId = sheetId;
 
   // Debounce: compute digest of what would be sent (excluding secret)
   try{
@@ -925,14 +985,16 @@ async function sendReplaceAllWebhook(opts){
 async function pushInventoryToNewSheet(character){
   ensureSettings();
   if (!character) return;
-  const url = (state.settings.appsScriptUrl||'').trim();
-  if (!url || !isLikelyAppsScriptExec(url)) { log('Push inventory aborted: invalid Apps Script URL'); return; }
-  const secret = (state.settings.appsScriptSecret||'').trim();
+  const url = getWebhookUrl();
+  if (!url || !isLikelyWebhookUrl(url)) { log('Push inventory aborted: invalid webhook URL'); return; }
+  const secret = getWebhookSecret();
+  const sheetId = getSheetIdFromSettings();
   const inv = state.inventory[character];
   if (!inv || !Array.isArray(inv.items)) { log('Push inventory aborted: no inventory for', character); return; }
   const sheetName = `Inventory - ${character}`;
   const payload = {
     secret,
+    ...(sheetId ? { sheetId } : {}),
     action: 'pushInventorySheet',
     character,
     sheetName,
@@ -1204,17 +1266,17 @@ async function scanLogs(){
               if (lastMob){
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ` (combat; prev=${prev.standing})` : ' (combat)';
-                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: dedupeStandingDisplay(lastMob.standing + note), score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 dlog('Combat-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ' (combat; prev=' + prev.standing + ')' : ' (combat)';
-                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: dedupeStandingDisplay((lastChar.standingDisplay||lastChar.standing||'') + note), mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
                 dlog('Combat-biased /con, applied char fallback', char, mob);
               } else {
                 const prev = nowState.prevBeforeCombat;
                 const note = prev && prev.standing ? ' (combat?; prev=' + prev.standing + ')' : ' (combat?)';
-                state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                state.covFaction[char] = { standing, standingDisplay: dedupeStandingDisplay(standing + note), score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 dlog('Combat-biased /con, accepted as baseline', char, mob);
               }
             }
@@ -1222,17 +1284,17 @@ async function scanLogs(){
               if (lastMob){
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ` (invis; prev=${prev.standing})` : ' (invis)';
-                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: lastMob.standing + note, score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                state.covFaction[char] = { standing: lastMob.standing, standingDisplay: dedupeStandingDisplay(lastMob.standing + note), score: lastMob.score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 dlog('Invis-biased /con, applied mob fallback', char, mob);
               } else if (lastChar){
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ' (invis; prev=' + prev.standing + ')' : ' (invis)';
-                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: (lastChar.standingDisplay||lastChar.standing||'') + note, mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
+                state.covFaction[char] = Object.assign({}, lastChar, { standingDisplay: dedupeStandingDisplay((lastChar.standingDisplay||lastChar.standing||'') + note), mob: lastChar.mob || mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO });
                 dlog('Invis-biased /con, applied char fallback', char, mob);
               } else {
                 const prev = nowState.prevBeforeInvis;
                 const note = prev && prev.standing ? ' (invis?; prev=' + prev.standing + ')' : ' (invis?)';
-                state.covFaction[char] = { standing, standingDisplay: standing + note, score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
+                state.covFaction[char] = { standing, standingDisplay: dedupeStandingDisplay(standing + note), score, mob, detectedUtcISO: t.utcISO, detectedLocalISO: t.localISO };
                 dlog('Invis-biased /con, accepted as baseline', char, mob);
               }
             }
@@ -1328,7 +1390,15 @@ async function maybeWriteLocalSheets(){
   changed = writeCsv(path.join(dir, 'Zone Tracker.csv'), zHead, zRowsOut) || changed;
 
   const fHead = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
-  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [char, v.standing||'', v.score ?? '', v.mob||'', v.detectedUtcISO||'', v.detectedLocalISO||'', (v.standingDisplay||'') ]);
+  const fRows = Object.entries(state.covFaction || {}).map(([char, v]) => [
+    char,
+    v.standing || '',
+    v.score ?? '',
+    v.mob || '',
+    v.detectedUtcISO || '',
+    v.detectedLocalISO || '',
+    dedupeStandingDisplay(v.standingDisplay || '')
+  ]);
 const fRowsOut = filterRowsByFavorites(fRows);
   changed = writeCsv(path.join(dir, 'CoV Faction.csv'), fHead, fRowsOut) || changed;
 
@@ -1644,8 +1714,8 @@ function needsOnboarding(){
     const logsOk = !!(state.settings.logsDir && fs.existsSync(state.settings.logsDir));
     const baseOk = !!(state.settings.baseDir && fs.existsSync(state.settings.baseDir));
     const sheetOk = !!String(state.settings.sheetUrl||'').trim();
-    const execOk = isLikelyAppsScriptExec(String(state.settings.appsScriptUrl||'').trim());
-    return !(sheetOk && execOk && logsOk && baseOk);
+    const webhookOk = isLikelyWebhookUrl(getWebhookUrl());
+    return !(sheetOk && webhookOk && logsOk && baseOk);
   }catch{ return true; }
 }
 function openInstallerWindow(){

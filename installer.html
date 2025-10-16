@@ -45,18 +45,13 @@
   </style>
   <script>
     function byId(id){ return document.getElementById(id); }
-    function isLikelyAppsScriptExec(url){
+    function isLikelyWebhookUrl(url){
       try{
         const u = new URL(String(url||'').trim());
-        if (u.protocol !== 'https:') return false;
-        if (u.hostname === 'script.google.com'){
-          const parts = u.pathname.split('/').filter(Boolean);
-          return (parts.length >= 4 && parts[0]==='macros' && parts[1]==='s' && /[A-Za-z0-9_-]+/.test(parts[2]) && parts[3]==='exec');
-        }
-        if (u.hostname.endsWith('googleusercontent.com')){
-          return /\/macros\//.test(u.pathname);
-        }
-        return false;
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+        if (!u.hostname) return false;
+        if (!u.pathname || u.pathname === '/') return false;
+        return true;
       }catch{ return false; }
     }
     let step = 0;
@@ -81,7 +76,7 @@
       try{
         const { settings } = await window.EQCM.getSettings();
         byId('sheetUrl').value = settings.sheetUrl || '';
-        byId('appsScriptUrl').value = settings.appsScriptUrl || '';
+        byId('webhookUrl').value = settings.webhookUrl || settings.appsScriptUrl || '';
         byId('logsDir').value = settings.logsDir || '';
         byId('baseDir').value = settings.baseDir || '';
         byId('localSheetsDir').value = settings.localSheetsDir || '';
@@ -91,7 +86,7 @@
       syncWalkthroughCaptions();
     }
     function attachHandlers(){
-      ['sheetUrl','appsScriptUrl','logsDir','baseDir','localSheetsDir'].forEach(id => {
+      ['sheetUrl','webhookUrl','logsDir','baseDir','localSheetsDir'].forEach(id => {
         const el = byId(id);
         el.addEventListener('input', renderButtons);
       });
@@ -106,7 +101,10 @@
     async function next(){
       if (!canProceed(step)) return;
       if (step === 0){ await savePartial({ sheetUrl: byId('sheetUrl').value.trim() }); }
-      if (step === 1){ await savePartial({ appsScriptUrl: byId('appsScriptUrl').value.trim(), remoteSheetsEnabled: true }); }
+      if (step === 1){ 
+        const webhookUrl = byId('webhookUrl').value.trim();
+        await savePartial({ webhookUrl, appsScriptUrl: webhookUrl, remoteSheetsEnabled: true }); 
+      }
       if (step === 2){ await savePartial({ logsDir: byId('logsDir').value.trim() }); }
       if (step === 3){ await savePartial({ baseDir: byId('baseDir').value.trim() }); }
       if (step === 4){ await savePartial({ localSheetsDir: byId('localSheetsDir').value.trim(), localSheetsEnabled: true }); }
@@ -125,16 +123,16 @@
       el.classList.toggle('invalid', !ok && url.length>0);
       return ok;
     }
-    function validateExecUrl(){
-      const el = byId('appsScriptUrl');
+    function validateApiUrl(){
+      const el = byId('webhookUrl');
       const url = el.value.trim();
-      const ok = isLikelyAppsScriptExec(url);
+      const ok = isLikelyWebhookUrl(url);
       el.classList.toggle('invalid', !ok && url.length>0);
       return ok;
     }
     function canProceed(s){
       if (s===0) return byId('sheetUrl').value.trim().length>0; // accept and parse later
-      if (s===1) return isLikelyAppsScriptExec(byId('appsScriptUrl').value.trim());
+      if (s===1) return isLikelyWebhookUrl(byId('webhookUrl').value.trim());
       if (s===2) return byId('logsDir').value.trim().length>0;
       if (s===3) return byId('baseDir').value.trim().length>0;
       if (s===4) return true; // local CSV optional; explain below
@@ -154,9 +152,7 @@
         try { window.open(url, '_blank'); } catch {}
       }
     }
-    function openAppsScriptHome(){ window.EQCM.openExternal('https://script.google.com/home'); }
-    function openDocs(){ window.EQCM.openExternal('https://developers.google.com/apps-script/guides/web'); }
-    async function copyCodeGs(){ try { await window.EQCM.copyCodeGs(); } catch {} }
+    function openExpressGuide(){ window.EQCM.openExternal('https://expressjs.com/en/starter/installing.html'); }
 
     let walkthroughModal = null;
     let lastWalkthroughFocus = null;
@@ -235,95 +231,22 @@
   </div>
 
   <div id="step1" class="step">
-    <h3>2. Deploy the Apps Script</h3>
-    <p class="small">This script receives updates from the app and writes to your sheet.</p>
+    <h3>2. Deploy the webhook server</h3>
+    <p class="small">Host the EQCM Node/Express webhook so it can keep your Google Sheet in sync.</p>
     <ol class="small">
-      <li>In your Google Sheet, open Extensions → Apps Script.</li>
-      <li>
-        Copy the provided <button class="inline-btn" onclick="copyCodeGs()" type="button">Code.gs</button>
-        <div class="note">Copies the Apps Script source to your clipboard.</div>
-      </li>
-      <li>Paste the provided Code.gs into the editor, then deploy the project as a Web app.</li>
-      <li>Copy the Web app <b>/exec</b> URL and paste it below.</li>
+      <li>Install Node.js 18 or newer on the target machine (or use a host such as Render/Fly/Heroku).</li>
+      <li>Deploy the service in <code>server/index.js</code> (<code>npm install</code> then <code>npm run api</code> locally, or push the repo to your host).</li>
+      <li>Provide the required environment variables: <code>GOOGLE_SHEET_ID</code>, <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> (or <code>GOOGLE_APPLICATION_CREDENTIALS</code>), and optional <code>WEBHOOK_SECRET</code>.</li>
+      <li>Expose the service over HTTP(S) and copy the full <code>/webhook</code> endpoint URL.</li>
     </ol>
-    <div class="callout">Walkthrough: follow the numbered screenshots below to deploy your Apps Script.</div>
-    <div class="walkthrough-gallery">
-      <figure>
-        <span class="step-badge">1</span>
-        <img src="./assets/apps_script_screenshot.png" alt="Open the Apps Script editor" data-desc="Extensions → Apps Script opens the project linked to your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Extensions → Apps Script opens the project linked to your sheet.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">2</span>
-        <img src="./assets/apps_script_screenshot2.png" alt="Apps Script project landing screen" data-desc="Apps Script loads with the default Code.gs placeholder file." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Apps Script loads with the default Code.gs placeholder file.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">3</span>
-        <img src="./assets/apps_script_screenshot3.png" alt="Replace the default code" data-desc="Delete the sample myFunction content so the file is empty. Paste the provided Code.gs snippet into the editor." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Delete the sample myFunction content so the file is empty. Paste the provided Code.gs snippet into the editor.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">4</span>
-        <img src="./assets/apps_script_screenshot4.png" alt="Paste the provided Code.gs" data-desc="Use Deploy → New Deployments to start publishing the script." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Use Deploy → New Deployments to start publishing the script.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">5</span>
-        <img src="./assets/apps_script_screenshot5.png" alt="Open the Deploy menu" data-desc="Select Configuration to set up a fresh Web app." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Select <strong>Configuration</strong> to set up a fresh Web app.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">6</span>
-        <img src="./assets/apps_script_screenshot6.png" alt="Choose new deployment" data-desc="Select Configuration → Web App." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Select Configuration → Web App.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">7</span>
-        <img src="./assets/apps_script_screenshot7.png" alt="Configure the deployment" data-desc="Name the deployment so you can recognize it. Choose Execute as Me and set access to Anyone." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Name the deployment so you can recognize it. Choose Execute as Me and set access to Anyone.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">8</span>
-        <img src="./assets/apps_script_screenshot8.png" alt="Set Web app access levels" data-desc="Select Authorize access." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Select Authorize access.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">9</span>
-        <img src="./assets/apps_script_screenshot9.png" alt="Confirm deployment summary" data-desc="Choose your account." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Choose your account.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">10</span>
-        <img src="./assets/apps_script_screenshot10.png" alt="Review permissions prompt" data-desc="Approve the Google warning by choosing Advanced → Go to project." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Approve the Google warning by choosing Advanced → Go to project.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">11</span>
-        <img src="./assets/apps_script_screenshot11.png" alt="Google authorization warning" data-desc="Approve the Google warning by choosing Advanced → Go to project." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Approve the Google warning by choosing Advanced → Go to project.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">12</span>
-        <img src="./assets/apps_script_screenshot12.png" alt="Grant script permissions" data-desc="Grant the requested scopes so the web app can read and write your sheet." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Grant the requested scopes so the web app can read and write your sheet.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">13</span>
-        <img src="./assets/apps_script_screenshot13.png" alt="Deployment success dialog" data-desc="Pending the updates." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>Pending the updates.</figcaption>
-      </figure>
-      <figure>
-        <span class="step-badge">14</span>
-        <img src="./assets/apps_script_screenshot14.png" alt="Copy the Web app exec link" data-desc="After authorizing, you’ll see a success dialog with the new Web app URL. Copy the /exec link and paste it into the wizard field below." onclick="showWalkthroughImage(this)" onkeydown="if(event.key==='Enter'||event.key===' '){ event.preventDefault(); showWalkthroughImage(this); }" role="button" tabindex="0" />
-        <figcaption>After authorizing, you’ll see a success dialog with the new Web app URL. Copy the /exec link and paste it into the wizard field below.</figcaption>
-      </figure>
+    <div class="callout">
+      Need deployment guidance?
+      <button class="inline-btn" type="button" onclick="openExpressGuide()">Express guide</button>
     </div>
-    <label>Apps Script /exec URL</label>
-    <input id="appsScriptUrl" type="text" placeholder="https://script.google.com/macros/s/XXXX/exec" oninput="validateExecUrl()"/>
-    <div class="note">Paste the exact /exec URL from your deployment.</div>
+    <label>Webhook URL</label>
+    <input id="webhookUrl" type="text" placeholder="https://your-api.example.com/webhook" oninput="validateApiUrl()"/>
+    <div class="note">Example: https://your-render-app.onrender.com/webhook</div>
   </div>
-
   <div id="step2" class="step">
     <h3>3. Pick your EverQuest logs folder</h3>
     <div class="row">
