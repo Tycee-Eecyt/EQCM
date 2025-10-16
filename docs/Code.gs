@@ -106,25 +106,32 @@ function writeAllRows_(sh, header, rows){
   }
 }
 
-function normalizeZoneRow_(row, cols){
+function normalizeRow_(row, cols){
   const out = Array.isArray(row) ? row.slice(0, cols) : [];
   while (out.length < cols) out.push('');
   return out;
 }
 
-function buildZoneRowMap_(values, keyIdx, utcIdx, cols){
-  const map = new Map();
-  if (!Array.isArray(values)) return map;
-  values.forEach(row => {
-    if (!row || row.length <= keyIdx) return;
-    const key = String(row[keyIdx] || '').trim();
-    if (!key) return;
-    map.set(key, { utc: row[utcIdx], values: normalizeZoneRow_(row, cols) });
+function getBestTimestamp_(values){
+  let bestStr = '';
+  let bestMs = NaN;
+  (Array.isArray(values) ? values : []).forEach(val => {
+    const str = String(val || '').trim();
+    if (!str) return;
+    const ms = parseDateValue_(str);
+    if (!isNaN(ms)){
+      if (isNaN(bestMs) || ms > bestMs){
+        bestMs = ms;
+        bestStr = str;
+      }
+    } else if (!bestStr){
+      bestStr = str;
+    }
   });
-  return map;
+  return { value: bestStr, ms: bestMs };
 }
 
-function buildZoneRowIndexMap_(values, keyIdx, utcIdx, startRow, cols){
+function buildRowMapWithTimestamp_(values, keyIdx, dateIdxs, cols, startRow){
   const map = new Map();
   if (!Array.isArray(values)) return map;
   for (let i = 0; i < values.length; i++){
@@ -132,8 +139,44 @@ function buildZoneRowIndexMap_(values, keyIdx, utcIdx, startRow, cols){
     if (!row || row.length <= keyIdx) continue;
     const key = String(row[keyIdx] || '').trim();
     if (!key) continue;
-    map.set(key, { rowIndex: startRow + i, utc: row[utcIdx], values: normalizeZoneRow_(row, cols) });
+    const timestamps = (Array.isArray(dateIdxs) ? dateIdxs : []).map(idx => (idx >= 0 && idx < row.length) ? row[idx] : '');
+    const entry = {
+      values: normalizeRow_(row, cols),
+      bestTimestamp: getBestTimestamp_(timestamps)
+    };
+    if (typeof startRow === 'number') entry.rowIndex = startRow + i;
+    map.set(key, entry);
   }
+  return map;
+}
+
+function makeInventoryDetailsKey_(character, file){
+  const c = String(character || '').trim();
+  const f = String(file || '').trim();
+  if (!c && !f) return '';
+  return c + '\u0001' + f;
+}
+
+function buildInventoryDetailsGroupMap_(rows, headerLength, characterIdx, fileIdx, createdIdx, modifiedIdx){
+  const map = new Map();
+  if (!Array.isArray(rows)) return map;
+  rows.forEach(row => {
+    if (!row) return;
+    const normalized = normalizeRow_(row, headerLength);
+    const key = makeInventoryDetailsKey_(normalized[characterIdx], normalized[fileIdx]);
+    if (!key) return;
+    const best = getBestTimestamp_([normalized[createdIdx], normalized[modifiedIdx]]);
+    let entry = map.get(key);
+    if (!entry){
+      entry = { rows: [], bestTimestamp: best };
+      map.set(key, entry);
+    } else {
+      if (compareDateValues_(best.value, entry.bestTimestamp.value) > 0){
+        entry.bestTimestamp = best;
+      }
+    }
+    entry.rows.push(normalized);
+  });
   return map;
 }
 
@@ -177,23 +220,28 @@ function upsertZones_(ss, rows){
   if (keyIdx < 0 || utcIdx < 0) return;
 
   const existingValues = sh.getDataRange().getValues();
-  const existingMap = buildZoneRowIndexMap_(existingValues.slice(1), keyIdx, utcIdx, 2, header.length);
+  const existingMap = buildRowMapWithTimestamp_(existingValues.slice(1), keyIdx, [utcIdx], header.length, 2);
 
   rows.forEach(o => {
     const row = [o.character,o.zone,o.utc,o.local,o.tz,o.source];
     const key = String(row[keyIdx] || '').trim();
     if (!key) return;
     const entry = existingMap.get(key);
+    const best = getBestTimestamp_([row[utcIdx]]);
     if (entry){
-      if (compareDateValues_(row[utcIdx], entry.utc) > 0){
+      if (compareDateValues_(best.value, entry.bestTimestamp.value) > 0){
         sh.getRange(entry.rowIndex, 1, 1, header.length).setValues([row]);
-        entry.utc = row[utcIdx];
-        entry.values = normalizeZoneRow_(row, header.length);
+        entry.bestTimestamp = best;
+        entry.values = normalizeRow_(row, header.length);
       }
     } else {
       sh.appendRow(row);
       const rowIndex = sh.getLastRow();
-      existingMap.set(key, { rowIndex, utc: row[utcIdx], values: normalizeZoneRow_(row, header.length) });
+      existingMap.set(key, {
+        rowIndex,
+        values: normalizeRow_(row, header.length),
+        bestTimestamp: best
+      });
     }
   });
 }
@@ -209,32 +257,42 @@ function replaceZones_(ss, rows){
   }
   const existingValues = sh.getDataRange().getValues();
   const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
-  const existingMap = buildZoneRowMap_(existingRows, keyIdx, utcIdx, header.length);
+  const existingMap = buildRowMapWithTimestamp_(existingRows, keyIdx, [utcIdx], header.length);
 
   const incoming = (rows||[]).map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
-  const finalRows = [];
-  const seen = new Set();
+  const noKeyRows = [];
+  const result = new Map();
 
   incoming.forEach(row => {
     const key = String(row[keyIdx] || '').trim();
+    const normalized = normalizeRow_(row, header.length);
     if (!key) {
-      finalRows.push(row);
+      noKeyRows.push(normalized);
       return;
     }
-    if (seen.has(key)) return;
-    seen.add(key);
+    const best = getBestTimestamp_([normalized[utcIdx]]);
     const existing = existingMap.get(key);
-    if (!existing){
-      finalRows.push(row);
-      return;
+    let candidate = {
+      values: normalized,
+      bestTimestamp: best
+    };
+    if (existing){
+      const cmp = compareDateValues_(best.value, existing.bestTimestamp.value);
+      if (cmp <= 0){
+        candidate = existing;
+      }
     }
-    const cmp = compareDateValues_(row[utcIdx], existing.utc);
-    // Preserve the sheet's value whenever it already holds the newer timestamp.
-    if (cmp > 0){
-      finalRows.push(row);
-      return;
+    const current = result.get(key);
+    if (!current){
+      result.set(key, candidate);
+    } else if (compareDateValues_(candidate.bestTimestamp.value, current.bestTimestamp.value) > 0){
+      result.set(key, candidate);
     }
-    finalRows.push(existing.values.slice());
+  });
+
+  const finalRows = noKeyRows.slice();
+  result.forEach(entry => {
+    finalRows.push(entry.values.slice());
   });
 
   writeAllRows_(sh, header, finalRows);
@@ -243,15 +301,88 @@ function replaceZones_(ss, rows){
 function upsertFactions_(ss, rows){
   const header = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
   const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
-  const data = rows.map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
-  upsertRowsByKey_(sh, header, 'Character', data);
+  ensureHeader_(sh, header);
+  const keyIdx = header.indexOf('Character');
+  const utcIdx = header.indexOf('Consider Time (UTC)');
+  const localIdx = header.indexOf('Consider Time (Local)');
+  if (keyIdx < 0 || utcIdx < 0) return;
+
+  const existingValues = sh.getDataRange().getValues();
+  const existingMap = buildRowMapWithTimestamp_(existingValues.slice(1), keyIdx, [utcIdx, localIdx], header.length, 2);
+
+  rows.forEach(o => {
+    const row = [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')];
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) return;
+    const best = getBestTimestamp_([row[utcIdx], row[localIdx]]);
+    const entry = existingMap.get(key);
+    if (entry){
+      if (compareDateValues_(best.value, entry.bestTimestamp.value) > 0){
+        sh.getRange(entry.rowIndex, 1, 1, header.length).setValues([row]);
+        entry.bestTimestamp = best;
+        entry.values = normalizeRow_(row, header.length);
+      }
+    } else {
+      sh.appendRow(row);
+      const rowIndex = sh.getLastRow();
+      existingMap.set(key, {
+        rowIndex,
+        values: normalizeRow_(row, header.length),
+        bestTimestamp: best
+      });
+    }
+  });
 }
 
 function replaceFactions_(ss, rows){
   const header = ['Character','Standing','Score','Mob','Consider Time (UTC)','Consider Time (Local)','Notes'];
   const sh = getOrMakeSheet_(ss, CONFIG.FACTION_SHEET);
-  const data = (rows||[]).map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
-  writeAllRows_(sh, header, data);
+  const keyIdx = header.indexOf('Character');
+  const utcIdx = header.indexOf('Consider Time (UTC)');
+  const localIdx = header.indexOf('Consider Time (Local)');
+  if (keyIdx < 0 || utcIdx < 0) {
+    const data = (rows||[]).map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
+    writeAllRows_(sh, header, data);
+    return;
+  }
+  const existingValues = sh.getDataRange().getValues();
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const existingMap = buildRowMapWithTimestamp_(existingRows, keyIdx, [utcIdx, localIdx], header.length);
+
+  const incoming = (rows||[]).map(o => [o.character,o.standing,o.score,o.mob,o.utc,o.local,(o.standingDisplay||'')]);
+  const noKeyRows = [];
+  const result = new Map();
+  incoming.forEach(row => {
+    const normalized = normalizeRow_(row, header.length);
+    const key = String(normalized[keyIdx] || '').trim();
+    if (!key) {
+      noKeyRows.push(normalized);
+      return;
+    }
+    const best = getBestTimestamp_([normalized[utcIdx], normalized[localIdx]]);
+    const existing = existingMap.get(key);
+    let candidate = {
+      values: normalized,
+      bestTimestamp: best
+    };
+    if (existing){
+      const cmp = compareDateValues_(best.value, existing.bestTimestamp.value);
+      if (cmp <= 0){
+        candidate = existing;
+      }
+    }
+    const current = result.get(key);
+    if (!current){
+      result.set(key, candidate);
+    } else if (compareDateValues_(candidate.bestTimestamp.value, current.bestTimestamp.value) > 0){
+      result.set(key, candidate);
+    }
+  });
+
+  const finalRows = noKeyRows.slice();
+  result.forEach(entry => finalRows.push(entry.values.slice()));
+
+  writeAllRows_(sh, header, finalRows);
 }
 
 // Replace CoV Faction with the EXACT contents of a CSV string
@@ -279,20 +410,55 @@ function upsertInventorySummary_(ss, rows, meta){
     'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
   ];
   const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
-  // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
-  const extrasSet = new Set();
-  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
-  const extras = Array.from(extrasSet);
-  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = (rows||[]).map(o => {
+  const existingValues = sh.getDataRange().getValues();
+  const existingHeader = existingValues.length ? existingValues[0] : [];
+  const existingExtras = [];
+  for (let i = base.length; i < existingHeader.length; i++){
+    const label = String(existingHeader[i] || '').trim();
+    if (label) existingExtras.push(label);
+  }
+  // Union any extra kit columns provided as o.kitExtras { HeaderLabel: value }
+  const extrasSet = new Set(existingExtras);
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = [];
+  existingExtras.forEach(label => { if (!extras.includes(label)) extras.push(label); });
+  extrasSet.forEach(label => { if (!extras.includes(label)) extras.push(label); });
+  const header = base.concat(extras);
+  sh.getRange(1,1,1,header.length).setValues([header]);
+
+  const keyIdx = header.indexOf('Character');
+  const createdIdx = header.indexOf('Created (UTC)');
+  const modifiedIdx = header.indexOf('Modified (UTC)');
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const existingMap = buildRowMapWithTimestamp_(existingRows, keyIdx, [createdIdx, modifiedIdx], header.length, 2);
+
+  (rows||[]).forEach(o => {
     const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
     const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
     const ex = o.kitExtras||{};
     const extraVals = extras.map(h => ex[h] ?? '');
-    return baseVals.concat(extraVals);
+    const row = baseVals.concat(extraVals);
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) return;
+    const best = getBestTimestamp_([row[createdIdx], row[modifiedIdx]]);
+    const entry = existingMap.get(key);
+    if (entry){
+      if (compareDateValues_(best.value, entry.bestTimestamp.value) > 0){
+        sh.getRange(entry.rowIndex, 1, 1, header.length).setValues([row]);
+        entry.bestTimestamp = best;
+        entry.values = normalizeRow_(row, header.length);
+      }
+    } else {
+      sh.appendRow(row);
+      const rowIndex = sh.getLastRow();
+      existingMap.set(key, {
+        rowIndex,
+        values: normalizeRow_(row, header.length),
+        bestTimestamp: best
+      });
+    }
   });
-  upsertRowsByKey_(sh, header, 'Character', data);
 }
 
 function replaceInventorySummary_(ss, rows, meta){
@@ -307,44 +473,153 @@ function replaceInventorySummary_(ss, rows, meta){
     'mbClassFive','mbClassFour','mbClassThree','mbClassTwo','mbClassOne','larrikansMask'
   ];
   const base = ['Character','Inventory File','Source Log File','Created (UTC)','Modified (UTC)'].concat(fixedHeaders);
-  const extrasSet = new Set();
-  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
-  const extras = Array.from(extrasSet);
-  const header = base.concat(extras);
   const sh = getOrMakeSheet_(ss, CONFIG.INV_SUMMARY_SHEET);
-  const data = (rows||[]).map(o => {
+  const existingValues = sh.getDataRange().getValues();
+  const existingHeader = existingValues.length ? existingValues[0] : [];
+  const existingExtras = [];
+  for (let i = base.length; i < existingHeader.length; i++){
+    const label = String(existingHeader[i] || '').trim();
+    if (label) existingExtras.push(label);
+  }
+  const extrasSet = new Set(existingExtras);
+  (rows||[]).forEach(o => { const ex = o.kitExtras||{}; Object.keys(ex).forEach(k => extrasSet.add(String(k))); });
+  const extras = [];
+  existingExtras.forEach(label => { if (!extras.includes(label)) extras.push(label); });
+  extrasSet.forEach(label => { if (!extras.includes(label)) extras.push(label); });
+  const header = base.concat(extras);
+
+  const keyIdx = header.indexOf('Character');
+  const createdIdx = header.indexOf('Created (UTC)');
+  const modifiedIdx = header.indexOf('Modified (UTC)');
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const existingMap = buildRowMapWithTimestamp_(existingRows, keyIdx, [createdIdx, modifiedIdx], header.length);
+
+  const incoming = (rows||[]).map(o => {
     const fixedVals = fixedProps.map(p => o.raidKit && (o.raidKit[p] ?? '') || '');
     const baseVals = [o.character,o.file,o.logFile,o.created,o.modified].concat(fixedVals);
     const ex = o.kitExtras||{};
     const extraVals = extras.map(h => ex[h] ?? '');
     return baseVals.concat(extraVals);
   });
-  writeAllRows_(sh, header, data);
+  const noKeyRows = [];
+  const result = new Map();
+  incoming.forEach(row => {
+    const normalized = normalizeRow_(row, header.length);
+    const key = String(normalized[keyIdx] || '').trim();
+    if (!key) {
+      noKeyRows.push(normalized);
+      return;
+    }
+    const best = getBestTimestamp_([normalized[createdIdx], normalized[modifiedIdx]]);
+    const existing = existingMap.get(key);
+    let candidate = {
+      values: normalized,
+      bestTimestamp: best
+    };
+    if (existing){
+      const cmp = compareDateValues_(best.value, existing.bestTimestamp.value);
+      if (cmp <= 0){
+        candidate = existing;
+      }
+    }
+    const current = result.get(key);
+    if (!current){
+      result.set(key, candidate);
+    } else if (compareDateValues_(candidate.bestTimestamp.value, current.bestTimestamp.value) > 0){
+      result.set(key, candidate);
+    }
+  });
+
+  const finalRows = noKeyRows.slice();
+  result.forEach(entry => finalRows.push(entry.values.slice()));
+
+  writeAllRows_(sh, header, finalRows);
 }
 
 function upsertInventoryDetails_(ss, rows){
   const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
   const sh = getOrMakeSheet_(ss, CONFIG.INV_ITEMS_SHEET);
-  ensureHeader_(sh, header);
-  const data = [];
-  rows.forEach(o => {
-    (o.items||[]).forEach(it => {
-      data.push([o.character, o.file, o.created, o.modified, it.Location, it.Name, it.ID, it.Count, it.Slots]);
-    });
+  const existingValues = sh.getDataRange().getValues();
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const characterIdx = header.indexOf('Character');
+  const fileIdx = header.indexOf('Inventory File');
+  const createdIdx = header.indexOf('Created (UTC)');
+  const modifiedIdx = header.indexOf('Modified (UTC)');
+  const groups = buildInventoryDetailsGroupMap_(existingRows, header.length, characterIdx, fileIdx, createdIdx, modifiedIdx);
+
+  (rows||[]).forEach(o => {
+    const key = makeInventoryDetailsKey_(o.character, o.file);
+    if (!key) return;
+    const items = Array.isArray(o.items) ? o.items : [];
+    const newRows = items.map(it => normalizeRow_([
+      o.character, o.file, o.created, o.modified,
+      it.Location, it.Name, it.ID, it.Count, it.Slots
+    ], header.length));
+    const best = getBestTimestamp_([o.created, o.modified]);
+    const entry = groups.get(key);
+    if (entry){
+      if (compareDateValues_(best.value, entry.bestTimestamp.value) > 0){
+        entry.rows = newRows;
+        entry.bestTimestamp = best;
+      }
+    } else {
+      groups.set(key, { rows: newRows, bestTimestamp: best });
+    }
   });
-  if (data.length) sh.getRange(sh.getLastRow()+1,1,data.length,header.length).setValues(data);
+
+  const finalRows = [];
+  groups.forEach(entry => {
+    (entry.rows || []).forEach(row => finalRows.push(normalizeRow_(row, header.length)));
+  });
+  writeAllRows_(sh, header, finalRows);
 }
 
 function replaceInventoryDetails_(ss, rows){
   const header = ['Character','Inventory File','Created (UTC)','Modified (UTC)','Location','Name','ID','Count','Slots'];
   const sh = getOrMakeSheet_(ss, CONFIG.INV_ITEMS_SHEET);
-  const data = [];
+  const existingValues = sh.getDataRange().getValues();
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const characterIdx = header.indexOf('Character');
+  const fileIdx = header.indexOf('Inventory File');
+  const createdIdx = header.indexOf('Created (UTC)');
+  const modifiedIdx = header.indexOf('Modified (UTC)');
+  const existingGroups = buildInventoryDetailsGroupMap_(existingRows, header.length, characterIdx, fileIdx, createdIdx, modifiedIdx);
+
+  const result = new Map();
   (rows||[]).forEach(o => {
-    (o.items||[]).forEach(it => {
-      data.push([o.character, o.file, o.created, o.modified, it.Location, it.Name, it.ID, it.Count, it.Slots]);
-    });
+    const key = makeInventoryDetailsKey_(o.character, o.file);
+    if (!key) return;
+    const items = Array.isArray(o.items) ? o.items : [];
+    const newRows = items.map(it => normalizeRow_([
+      o.character, o.file, o.created, o.modified,
+      it.Location, it.Name, it.ID, it.Count, it.Slots
+    ], header.length));
+    const best = getBestTimestamp_([o.created, o.modified]);
+    const existing = existingGroups.get(key);
+    let candidate = { rows: newRows, bestTimestamp: best };
+    if (existing){
+      const cmp = compareDateValues_(best.value, existing.bestTimestamp.value);
+      if (cmp <= 0){
+        candidate = {
+          rows: (existing.rows || []).map(row => normalizeRow_(row, header.length)),
+          bestTimestamp: existing.bestTimestamp
+        };
+      }
+    }
+    const current = result.get(key);
+    if (!current){
+      result.set(key, candidate);
+    } else if (compareDateValues_(candidate.bestTimestamp.value, current.bestTimestamp.value) > 0){
+      result.set(key, candidate);
+    }
   });
-  writeAllRows_(sh, header, data);
+
+  const finalRows = [];
+  result.forEach(entry => {
+    (entry.rows || []).forEach(row => finalRows.push(normalizeRow_(row, header.length)));
+  });
+
+  writeAllRows_(sh, header, finalRows);
 }
 
 function replaceAll_(ss, body){
