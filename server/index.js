@@ -3,7 +3,9 @@ const { google } = require('googleapis');
 const { parse } = require('csv-parse/sync');
 const dotenv = require('dotenv');
 const { storeWebhookPayload, recordRawWebhook } = require('./db/payload-store');
-
+const { markCharacterSynced } = require('./db/summaries');
+const { startScheduler, scheduleCharacterSync, enqueueFullBackfill } = require('./jobs/scheduler');
+const { startWorker } = require('./jobs/worker');
 dotenv.config();
 
 const CONFIG = {
@@ -743,6 +745,13 @@ async function jsonImport(sheets, spreadsheetId, body) {
   return { imported };
 }
 
+const sheetHelpers = {
+  getSheetsClient,
+  upsertZones,
+  upsertFactions,
+  upsertInventorySummary,
+  upsertInventoryDetails
+};
 async function replaceAll(sheets, spreadsheetId, body) {
   const up = body.upserts || body || {};
   if (up.zones) await replaceZones(sheets, spreadsheetId, up.zones);
@@ -812,12 +821,17 @@ app.post('/webhook', async (req, res) => {
     const upserts = body.upserts || {};
     if (Object.keys(upserts).length) {
       try {
-        await storeWebhookPayload(spreadsheetId, upserts, body.meta || {});
+        affectedCharacters = await storeWebhookPayload(spreadsheetId, upserts, body.meta || {}, { enqueue: !immediate });
       } catch (err) {
         console.error('Store webhook payload error', err);
       }
     }
+    if (!immediate) {
+      res.json({ ok: true, queued: true, characters: affectedCharacters });
+      return;
+    }
     if (upserts.zones) await upsertZones(sheets, spreadsheetId, upserts.zones);
+    
     if (upserts.factions) await upsertFactions(sheets, spreadsheetId, upserts.factions);
     if (upserts.inventory) await upsertInventorySummary(sheets, spreadsheetId, upserts.inventory, body.meta || {});
     if (upserts.inventoryDetails) await upsertInventoryDetails(sheets, spreadsheetId, upserts.inventoryDetails);
@@ -826,6 +840,14 @@ app.post('/webhook', async (req, res) => {
     console.error('Webhook error', err);
     res.status(500).json({ ok: false, error: err.message || String(err) });
   }
+});
+
+startScheduler().catch((err) => {
+  console.error('Scheduler failed to start', err);
+});
+
+startWorker(sheetHelpers).catch((err) => {
+  console.error('Worker failed to start', err);
 });
 
 const port = Number(process.env.PORT || process.env.API_PORT || 3000);

@@ -1,5 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('./client');
+const { updateCharacterSummary } = require('./summaries');
 
 let indexesEnsured = false;
 
@@ -137,7 +138,8 @@ async function enqueueSyncJob(db, spreadsheetId, kind, character) {
   });
 }
 
-async function storeWebhookPayload(spreadsheetId, upserts = {}, meta = {}) {
+async function storeWebhookPayload(spreadsheetId, upserts = {}, meta = {}, options = {}) {
+  const { enqueue = true } = options;
   await ensureIndexes();
   const db = await getDb();
   const ops = [];
@@ -161,11 +163,14 @@ async function storeWebhookPayload(spreadsheetId, upserts = {}, meta = {}) {
   (upserts.inventory || []).forEach((r) => { if (r.character) characters.add(r.character); });
   (upserts.inventoryDetails || []).forEach((r) => { if (r.character) characters.add(r.character); });
 
-  await Promise.all(
-    Array.from(characters).map((character) =>
-      enqueueSyncJob(db, spreadsheetId, 'webhook_upsert', character)
-    )
-  );
+  await Promise.all(Array.from(characters).map((character) => updateCharacterSummary(spreadsheetId, character)));
+  if (enqueue && characters.size) {
+    await Promise.all(
+      Array.from(characters).map((character) =>
+        enqueueSyncJob(db, spreadsheetId, 'webhook_upsert', character)
+      )
+    );
+  }
 }
 
 async function recordRawWebhook(spreadsheetId, body) {

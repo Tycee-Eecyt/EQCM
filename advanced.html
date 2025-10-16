@@ -31,9 +31,10 @@
     async function load(){
       const { settings } = await window.EQCM.getSettings();
       byId('debugLogs').checked = !!settings.debugLogs;
+      byId('queueSheets').checked = settings.remoteSheetsImmediate === false;
     }
     async function save(){
-      const payload = { debugLogs: !!byId('debugLogs').checked };
+      const payload = { debugLogs: !!byId('debugLogs').checked, remoteSheetsImmediate: !byId('queueSheets').checked };
       await window.EQCM.setSettings(payload);
     }
     async function saveAndClose(){ await save(); window.close(); }

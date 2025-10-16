@@ -1,4 +1,4 @@
-﻿// EQ Character Manager — v2.0.11 — Author: Tyler A
+// EQ Character Manager — v2.0.11 — Author: Tyler A
 const { app, Tray, Menu, BrowserWindow, dialog, shell, nativeImage, ipcMain, screen, nativeTheme, clipboard, Notification } = require('electron');
 
 // Compatibility: expose a safe global fallback for older code paths
@@ -97,6 +97,7 @@ const DEFAULT_SETTINGS = {
   localSheetsEnabled: true,
   localSheetsDir: "",
   remoteSheetsEnabled: true,
+  remoteSheetsImmediate: true,
   // CoV Faction tab is driven by local CSV exactly (cleared and replaced on sync)
 
   // Backscan configuration
@@ -172,7 +173,7 @@ function getBackscanRetryMs(){
 function getInvisMaxMs(){ ensureSettings(); return Math.max(1, Number(state.settings.invisMaxMinutes||20)) * 60 * 1000; }
 function getCombatRecentMs(){ ensureSettings(); return Math.max(1, Number(state.settings.combatRecentMinutes||5)) * 60 * 1000; }
 
-function dedupeStandingDisplay(value){
+ dedupeStandingDisplay(value){
   const str = String(value || '').trim();
   if (!str) return '';
   const baseMatch = str.match(/^([^(]+)/);
@@ -786,8 +787,9 @@ async function maybePostWebhook(){
   // Optionally drive CoV Faction from CSV exactly; when enabled, do not upsert factions JSON
   // Always drive CoV Faction from CSV; do not upsert JSON factions
   const sheetId = getSheetIdFromSettings();
+  const immediate = isImmediateSheetsEnabled();
   const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
-  const payload = { secret, upserts };
+  const payload = { secret, upserts, immediate };
   if (sheetId) payload.sheetId = sheetId;
   try {
     const res = await postJson(url, payload);
@@ -858,7 +860,7 @@ async function sendReplaceFactionsCsvFromLocal(){
   const csv = fs.readFileSync(filePath, 'utf8');
   try{
     dlog('replaceFactionsCsv path', filePath);
-    const payload = { secret, action: 'replaceFactionsCsv', csv };
+    const immediate = isImmediateSheetsEnabled();\r\n    const payload = { secret, action: 'replaceFactionsCsv', csv, immediate };\r\n    if (sheetId) payload.sheetId = sheetId;
     if (sheetId) payload.sheetId = sheetId;
     const res = await postJson(url, payload);
     log('ReplaceFactionsCsv response', res.status, (res.body||'').slice(0, 180));
@@ -935,7 +937,8 @@ async function sendReplaceAllWebhook(opts){
   const meta = { invFixedHeaders: enabledFixed.map(d=>d.header), invFixedProps: enabledFixed.map(d=>d.prop) };
   // Always drive CoV Faction from CSV; do not include JSON factions in ReplaceAll
   const upserts = { zones: zoneRows, inventory: invRows, inventoryDetails: invDetails };
-  const payload = { secret, action: 'replaceAll', meta, upserts };
+  const immediate = isImmediateSheetsEnabled();
+  const payload = { secret, action: 'replaceAll', meta, upserts, immediate };
   if (sheetId) payload.sheetId = sheetId;
 
   // Debounce: compute digest of what would be sent (excluding secret)
