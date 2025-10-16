@@ -106,19 +106,138 @@ function writeAllRows_(sh, header, rows){
   }
 }
 
+function normalizeZoneRow_(row, cols){
+  const out = Array.isArray(row) ? row.slice(0, cols) : [];
+  while (out.length < cols) out.push('');
+  return out;
+}
+
+function buildZoneRowMap_(values, keyIdx, utcIdx, cols){
+  const map = new Map();
+  if (!Array.isArray(values)) return map;
+  values.forEach(row => {
+    if (!row || row.length <= keyIdx) return;
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) return;
+    map.set(key, { utc: row[utcIdx], values: normalizeZoneRow_(row, cols) });
+  });
+  return map;
+}
+
+function buildZoneRowIndexMap_(values, keyIdx, utcIdx, startRow, cols){
+  const map = new Map();
+  if (!Array.isArray(values)) return map;
+  for (let i = 0; i < values.length; i++){
+    const row = values[i];
+    if (!row || row.length <= keyIdx) continue;
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) continue;
+    map.set(key, { rowIndex: startRow + i, utc: row[utcIdx], values: normalizeZoneRow_(row, cols) });
+  }
+  return map;
+}
+
+function parseDateValue_(value){
+  if (value instanceof Date && !isNaN(value.getTime())) return value.getTime();
+  if (typeof value === 'number' && !isNaN(value)) return value;
+  const str = String(value || '').trim();
+  if (!str) return NaN;
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) return parsed;
+  const cleaned = str.replace(/^\[|\]$/g, '');
+  const parsedCleaned = Date.parse(cleaned);
+  return isNaN(parsedCleaned) ? NaN : parsedCleaned;
+}
+
+function compareDateValues_(nextUtc, prevUtc){
+  const nextMs = parseDateValue_(nextUtc);
+  const prevMs = parseDateValue_(prevUtc);
+  if (!isNaN(nextMs) && !isNaN(prevMs)){
+    if (nextMs > prevMs) return 1;
+    if (nextMs < prevMs) return -1;
+    return 0;
+  }
+  if (!isNaN(nextMs)) return 1;
+  if (!isNaN(prevMs)) return -1;
+  const nextStr = String(nextUtc || '').trim();
+  const prevStr = String(prevUtc || '').trim();
+  if (nextStr && !prevStr) return 1;
+  if (!nextStr && prevStr) return -1;
+  if (nextStr > prevStr) return 1;
+  if (nextStr < prevStr) return -1;
+  return 0;
+}
+
 function upsertZones_(ss, rows){
   const header = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
   const sh = getOrMakeSheet_(ss, CONFIG.ZONES_SHEET);
-  const data = rows.map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
-  // Key by Source Log File so same character on different servers are separate rows
-  upsertRowsByKey_(sh, header, 'Source Log File', data);
+  ensureHeader_(sh, header);
+  const keyIdx = header.indexOf('Source Log File');
+  const utcIdx = header.indexOf('Zone Time (UTC)');
+  if (keyIdx < 0 || utcIdx < 0) return;
+
+  const existingValues = sh.getDataRange().getValues();
+  const existingMap = buildZoneRowIndexMap_(existingValues.slice(1), keyIdx, utcIdx, 2, header.length);
+
+  rows.forEach(o => {
+    const row = [o.character,o.zone,o.utc,o.local,o.tz,o.source];
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) return;
+    const entry = existingMap.get(key);
+    if (entry){
+      if (compareDateValues_(row[utcIdx], entry.utc) > 0){
+        sh.getRange(entry.rowIndex, 1, 1, header.length).setValues([row]);
+        entry.utc = row[utcIdx];
+        entry.values = normalizeZoneRow_(row, header.length);
+      }
+    } else {
+      sh.appendRow(row);
+      const rowIndex = sh.getLastRow();
+      existingMap.set(key, { rowIndex, utc: row[utcIdx], values: normalizeZoneRow_(row, header.length) });
+    }
+  });
 }
 
 function replaceZones_(ss, rows){
   const header = ['Character','Last Zone','Zone Time (UTC)','Zone Time (Local)','Device TZ','Source Log File'];
   const sh = getOrMakeSheet_(ss, CONFIG.ZONES_SHEET);
-  const data = (rows||[]).map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
-  writeAllRows_(sh, header, data);
+  const keyIdx = header.indexOf('Source Log File');
+  const utcIdx = header.indexOf('Zone Time (UTC)');
+  if (keyIdx < 0 || utcIdx < 0) {
+    writeAllRows_(sh, header, (rows||[]).map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]));
+    return;
+  }
+  const existingValues = sh.getDataRange().getValues();
+  const existingRows = existingValues.length > 1 ? existingValues.slice(1) : [];
+  const existingMap = buildZoneRowMap_(existingRows, keyIdx, utcIdx, header.length);
+
+  const incoming = (rows||[]).map(o => [o.character,o.zone,o.utc,o.local,o.tz,o.source]);
+  const finalRows = [];
+  const seen = new Set();
+
+  incoming.forEach(row => {
+    const key = String(row[keyIdx] || '').trim();
+    if (!key) {
+      finalRows.push(row);
+      return;
+    }
+    if (seen.has(key)) return;
+    seen.add(key);
+    const existing = existingMap.get(key);
+    if (!existing){
+      finalRows.push(row);
+      return;
+    }
+    const cmp = compareDateValues_(row[utcIdx], existing.utc);
+    // Preserve the sheet's value whenever it already holds the newer timestamp.
+    if (cmp > 0){
+      finalRows.push(row);
+      return;
+    }
+    finalRows.push(existing.values.slice());
+  });
+
+  writeAllRows_(sh, header, finalRows);
 }
 
 function upsertFactions_(ss, rows){
