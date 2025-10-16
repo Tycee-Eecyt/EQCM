@@ -28,3 +28,8 @@
   - Produce beta builds/releases from `beta` (tag them, mark as pre-release).
   - When ready, merge `beta` back into `main` (`git checkout main && git merge --ff-only beta`) and tag a stable release.
   - Handle hotfixes by branching from `main`, then merge fixes into both `main` and `beta`.
+## Notes / Next Actions
+
+- Provide MONGODB_URI (Atlas M0) and REDIS_URL (BullMQ) in the server environment before deploying the scheduler/worker.
+- When queue mode is enabled the push-inventory shortcut is disabled; extend the worker or create a dedicated job if queued inventory sheet creation is required.
+- Monitor sync job throughput/quota usage and adjust SYNC_THRESHOLD_MINUTES, SYNC_WORKER_CONCURRENCY, or trigger /admin/backfill as needed.
