@@ -17,7 +17,8 @@ async function ensureIndexes() {
     db.collection('inventory_details').createIndex({ character: 1 }, { background: true }),
     db.collection('inventory_details').createIndex({ needs_sync: 1, last_sheet_push: 1 }, { background: true }),
     db.collection('sync_jobs').createIndex({ status: 1, scheduled_for: 1 }, { background: true }),
-    db.collection('sync_jobs').createIndex({ needs_sync: 1, scheduled_for: 1 }, { background: true })
+    db.collection('sync_jobs').createIndex({ needs_sync: 1, scheduled_for: 1 }, { background: true }),
+    db.collection('sync_jobs').createIndex({ cleanup_at: 1 }, { background: true, expireAfterSeconds: 0 })
   ]);
   indexesEnsured = true;
 }

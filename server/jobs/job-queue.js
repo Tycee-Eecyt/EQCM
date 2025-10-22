@@ -5,6 +5,8 @@ const DEFAULT_MAX_ATTEMPTS = Number(process.env.SYNC_MAX_ATTEMPTS || 3);
 const DEFAULT_BACKOFF_MS = Number(process.env.SYNC_BACKOFF_MS || 30_000);
 const DEFAULT_BACKOFF_CAP_MS = Number(process.env.SYNC_BACKOFF_CAP_MS || 15 * 60 * 1000);
 const JOB_LEASE_MS = Number(process.env.SYNC_LEASE_MS || 5 * 60 * 1000);
+const KEEP_COMPLETED_MINUTES = Number(process.env.SYNC_KEEP_COMPLETED_MINUTES ?? 60);
+const KEEP_FAILED_MINUTES = Number(process.env.SYNC_KEEP_FAILED_MINUTES ?? 24 * 60);
 
 function now() {
   return new Date();
@@ -90,6 +92,7 @@ async function enqueueJob({
         metadata,
         updated_at: nowDate
       },
+      $unset: { cleanup_at: '' },
       $setOnInsert: {
         attempts: 0,
         created_at: nowDate
@@ -114,7 +117,8 @@ async function enqueueJob({
     metadata,
     attempts: 0,
     created_at: nowDate,
-    updated_at: nowDate
+    updated_at: nowDate,
+    cleanup_at: null
   });
   return inserted.insertedId;
 }
@@ -144,6 +148,7 @@ async function leaseNextJob() {
         last_attempt_started_at: nowDate,
         updated_at: nowDate
       },
+      $unset: { cleanup_at: '' },
       $inc: { attempts: 1 }
     },
     {
@@ -167,6 +172,7 @@ async function leaseNextJob() {
         last_attempt_started_at: nowDate,
         updated_at: nowDate
       },
+      $unset: { cleanup_at: '' },
       $inc: { attempts: 1 }
     },
     {
@@ -181,6 +187,9 @@ async function markJobSuccess(job) {
   if (!job || !job._id) return;
   const jobs = await getJobsCollection();
   const nowDate = now();
+  const cleanupAt = KEEP_COMPLETED_MINUTES > 0
+    ? new Date(nowDate.getTime() + KEEP_COMPLETED_MINUTES * 60 * 1000)
+    : nowDate;
   await jobs.updateOne(
     { _id: job._id },
     {
@@ -190,10 +199,14 @@ async function markJobSuccess(job) {
         completed_at: nowDate,
         updated_at: nowDate,
         lease_expires: null,
-        last_error: null
+        last_error: null,
+        cleanup_at: cleanupAt
       }
     }
   );
+  if (KEEP_COMPLETED_MINUTES <= 0) {
+    await jobs.deleteOne({ _id: job._id });
+  }
 }
 
 async function markJobFailure(job, error) {
@@ -204,6 +217,9 @@ async function markJobFailure(job, error) {
   const attempts = Number(job.attempts || 0);
 
   if (attempts >= maxAttempts) {
+    const cleanupAt = KEEP_FAILED_MINUTES > 0
+      ? new Date(nowDate.getTime() + KEEP_FAILED_MINUTES * 60 * 1000)
+      : nowDate;
     await jobs.updateOne(
       { _id: job._id },
       {
@@ -213,10 +229,14 @@ async function markJobFailure(job, error) {
           failed_at: nowDate,
           updated_at: nowDate,
           lease_expires: null,
-          last_error: formatError(error)
+          last_error: formatError(error),
+          cleanup_at: cleanupAt
         }
       }
     );
+    if (KEEP_FAILED_MINUTES <= 0) {
+      await jobs.deleteOne({ _id: job._id });
+    }
     return false;
   }
 
@@ -231,7 +251,8 @@ async function markJobFailure(job, error) {
         lease_expires: null,
         updated_at: nowDate,
         last_error: formatError(error)
-      }
+      },
+      $unset: { cleanup_at: '' }
     }
   );
   return true;
@@ -246,5 +267,7 @@ module.exports = {
   normalizeBackoff,
   DEFAULT_MAX_ATTEMPTS,
   DEFAULT_BACKOFF_MS,
+  KEEP_COMPLETED_MINUTES,
+  KEEP_FAILED_MINUTES,
   JOB_COLLECTION
 };

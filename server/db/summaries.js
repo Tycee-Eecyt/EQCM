@@ -1,4 +1,5 @@
 const { getDb } = require('./client');
+const { KEEP_COMPLETED_MINUTES } = require('../jobs/job-queue');
 
 function nowDate() {
   return new Date();
@@ -76,6 +77,9 @@ async function getCharacterSummary(spreadsheetId, character) {
 async function markCharacterSynced(spreadsheetId, character) {
   const db = await getDb();
   const now = nowDate();
+  const cleanupAt = KEEP_COMPLETED_MINUTES > 0
+    ? new Date(now.getTime() + KEEP_COMPLETED_MINUTES * 60 * 1000)
+    : now;
   await Promise.all([
     db.collection('zones').updateMany(
       { spreadsheet_id: spreadsheetId, character },
@@ -96,12 +100,27 @@ async function markCharacterSynced(spreadsheetId, character) {
     db.collection('character_summaries').updateOne(
       { spreadsheet_id: spreadsheetId, character },
       { $set: { needs_sync: false, last_sheet_push: now } }
-    ),
-    db.collection('sync_jobs').updateMany(
-      { spreadsheet_id: spreadsheetId, character, status: 'running' },
-      { $set: { needs_sync: false, completed_at: now, status: 'completed', lease_expires: null, updated_at: now } }
     )
   ]);
+  if (KEEP_COMPLETED_MINUTES <= 0) {
+    await db.collection('sync_jobs').deleteMany(
+      { spreadsheet_id: spreadsheetId, character, status: { $in: ['running', 'completed'] } }
+    );
+  } else {
+    await db.collection('sync_jobs').updateMany(
+      { spreadsheet_id: spreadsheetId, character, status: 'running' },
+      {
+        $set: {
+          needs_sync: false,
+          completed_at: now,
+          status: 'completed',
+          lease_expires: null,
+          updated_at: now,
+          cleanup_at: cleanupAt
+        }
+      }
+    );
+  }
 }
 
 async function listCharactersForSpreadsheet(spreadsheetId) {
