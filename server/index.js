@@ -846,9 +846,17 @@ startScheduler().catch((err) => {
   console.error('Scheduler failed to start', err);
 });
 
-startWorker(sheetHelpers).catch((err) => {
+let workerController;
+try {
+  workerController = startWorker(sheetHelpers);
+} catch (err) {
   console.error('Worker failed to start', err);
-});
+}
+if (workerController && typeof workerController.catch === 'function') {
+  workerController.catch((err) => {
+    console.error('Worker failed to start', err);
+  });
+}
 
 const port = Number(process.env.PORT || process.env.API_PORT || 3000);
 app.listen(port, () => {

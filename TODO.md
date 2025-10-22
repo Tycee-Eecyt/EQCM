@@ -31,6 +31,12 @@
 
 ## Notes / Next Actions
 
-- Provide MONGODB_URI (Atlas M0) and REDIS_URL (BullMQ) in the server environment before deploying the scheduler/worker.
+- Provide MONGODB_URI (Atlas M0) in the server environment before deploying the scheduler/worker; REDIS_URL is no longer required.
 - When queue mode is enabled the push-inventory shortcut is disabled; extend the worker or create a dedicated job if queued inventory sheet creation is required.
 - Monitor sync job throughput/quota usage and adjust SYNC_THRESHOLD_MINUTES, SYNC_WORKER_CONCURRENCY, or trigger /admin/backfill as needed.
+
+Custom scheduler status:
+
+- [x] Removed BullMQ/ioredis dependencies and refreshed the lockfile.
+- [x] Added an integration test that boots an in-memory Mongo instance to cover enqueue/lease/retry flows.
+- [ ] Monitor the sync_jobs collection in staging to validate lease expirations and retry behavior under load.

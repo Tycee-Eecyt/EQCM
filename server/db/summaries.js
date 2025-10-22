@@ -98,8 +98,8 @@ async function markCharacterSynced(spreadsheetId, character) {
       { $set: { needs_sync: false, last_sheet_push: now } }
     ),
     db.collection('sync_jobs').updateMany(
-      { spreadsheet_id: spreadsheetId, character },
-      { $set: { needs_sync: false, completed_at: now } }
+      { spreadsheet_id: spreadsheetId, character, status: 'running' },
+      { $set: { needs_sync: false, completed_at: now, status: 'completed', lease_expires: null, updated_at: now } }
     )
   ]);
 }

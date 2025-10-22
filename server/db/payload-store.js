@@ -1,6 +1,6 @@
-const { ObjectId } = require('mongodb');
 const { getDb } = require('./client');
 const { updateCharacterSummary } = require('./summaries');
+const { enqueueJob } = require('../jobs/job-queue');
 
 let indexesEnsured = false;
 
@@ -16,6 +16,7 @@ async function ensureIndexes() {
     db.collection('inventory').createIndex({ needs_sync: 1, last_sheet_push: 1 }, { background: true }),
     db.collection('inventory_details').createIndex({ character: 1 }, { background: true }),
     db.collection('inventory_details').createIndex({ needs_sync: 1, last_sheet_push: 1 }, { background: true }),
+    db.collection('sync_jobs').createIndex({ status: 1, scheduled_for: 1 }, { background: true }),
     db.collection('sync_jobs').createIndex({ needs_sync: 1, scheduled_for: 1 }, { background: true })
   ]);
   indexesEnsured = true;
@@ -127,14 +128,15 @@ async function upsertInventoryDetails(db, spreadsheetId, row) {
   );
 }
 
-async function enqueueSyncJob(db, spreadsheetId, kind, character) {
-  await db.collection('sync_jobs').insertOne({
-    spreadsheet_id: spreadsheetId,
-    kind,
+async function enqueueSyncJob(spreadsheetId, kind, character, options = {}) {
+  await enqueueJob({
+    spreadsheetId,
     character,
-    needs_sync: true,
-    scheduled_for: nowDate(),
-    created_at: nowDate()
+    kind,
+    delayMs: options.delay,
+    maxAttempts: options.maxAttempts,
+    backoff: options.backoff,
+    metadata: options.metadata || {}
   });
 }
 
@@ -167,7 +169,7 @@ async function storeWebhookPayload(spreadsheetId, upserts = {}, meta = {}, optio
   if (enqueue && characters.size) {
     await Promise.all(
       Array.from(characters).map((character) =>
-        enqueueSyncJob(db, spreadsheetId, 'webhook_upsert', character)
+        enqueueSyncJob(spreadsheetId, 'webhook_upsert', character)
       )
     );
   }

@@ -173,7 +173,7 @@ function getBackscanRetryMs(){
 function getInvisMaxMs(){ ensureSettings(); return Math.max(1, Number(state.settings.invisMaxMinutes||20)) * 60 * 1000; }
 function getCombatRecentMs(){ ensureSettings(); return Math.max(1, Number(state.settings.combatRecentMinutes||5)) * 60 * 1000; }
 
- dedupeStandingDisplay(value){
+function dedupeStandingDisplay(value){
   const str = String(value || '').trim();
   if (!str) return '';
   const baseMatch = str.match(/^([^(]+)/);
@@ -860,7 +860,8 @@ async function sendReplaceFactionsCsvFromLocal(){
   const csv = fs.readFileSync(filePath, 'utf8');
   try{
     dlog('replaceFactionsCsv path', filePath);
-    const immediate = isImmediateSheetsEnabled();\r\n    const payload = { secret, action: 'replaceFactionsCsv', csv, immediate };\r\n    if (sheetId) payload.sheetId = sheetId;
+    const immediate = isImmediateSheetsEnabled();
+    const payload = { secret, action: 'replaceFactionsCsv', csv, immediate };
     if (sheetId) payload.sheetId = sheetId;
     const res = await postJson(url, payload);
     log('ReplaceFactionsCsv response', res.status, (res.body||'').slice(0, 180));

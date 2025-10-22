@@ -1,35 +1,20 @@
-const { Queue, QueueScheduler } = require('bullmq');
 const { getDb } = require('../db/client');
 const { listCharactersForSpreadsheet } = require('../db/summaries');
+const { enqueueJob } = require('./job-queue');
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const QUEUE_NAME = process.env.SYNC_QUEUE_NAME || 'eqcm-sync';
 const SCAN_INTERVAL_MS = Number(process.env.SYNC_SCAN_INTERVAL_MS || 60_000);
 const STALE_MINUTES = Number(process.env.SYNC_THRESHOLD_MINUTES || 30);
 
-const connectionOptions = { connection: REDIS_URL.startsWith('redis://')
-  ? { url: REDIS_URL }
-  : { host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379) } };
-
-const syncQueue = new Queue(QUEUE_NAME, connectionOptions);
-const queueScheduler = new QueueScheduler(QUEUE_NAME, connectionOptions);
-
 async function scheduleCharacterSync(spreadsheetId, character, opts = {}) {
-  const jobId = `${spreadsheetId}:${character}`;
-  await syncQueue.add(
-    'sync-character',
-    { spreadsheetId, character },
-    Object.assign(
-      {
-        jobId,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 30_000 },
-        removeOnComplete: true,
-        removeOnFail: false
-      },
-      opts
-    )
-  );
+  await enqueueJob({
+    spreadsheetId,
+    character,
+    kind: opts.kind || 'character-sync',
+    delayMs: opts.delay || 0,
+    maxAttempts: opts.attempts,
+    backoff: opts.backoff,
+    metadata: opts.metadata || {}
+  });
 }
 
 async function pullCharactersNeedingSync(limit = 100) {
@@ -66,6 +51,7 @@ async function enqueuePendingJobs() {
 
 function randomDelay() {
   const maxSpread = Number(process.env.SYNC_STAGGER_MS || 120_000);
+  if (!Number.isFinite(maxSpread) || maxSpread <= 0) return 0;
   return Math.floor(Math.random() * maxSpread);
 }
 
@@ -80,7 +66,6 @@ async function periodicallyScan() {
 }
 
 async function startScheduler() {
-  await queueScheduler.waitUntilReady();
   setImmediate(periodicallyScan);
 }
 
@@ -92,10 +77,9 @@ async function enqueueFullBackfill(spreadsheetId) {
   ));
   return characters.length;
 }
+
 module.exports = {
   startScheduler,
   scheduleCharacterSync,
-  enqueueFullBackfill,
-  syncQueue,
-  connectionOptions,
+  enqueueFullBackfill
 };
