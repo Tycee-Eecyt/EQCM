@@ -18,7 +18,7 @@ const CONFIG = {
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || process.env.SPREADSHEET_ID;
 if (!SPREADSHEET_ID) {
-  console.warn('WARNING: GOOGLE_SHEET_ID environment variable is not set. Sheets API calls will fail.');
+  console.log('INFO: GOOGLE_SHEET_ID/SPREADSHEET_ID not set; expecting clients to supply sheetId or sheetUrl in webhook payloads.');
 }
 
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
@@ -818,6 +818,8 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
+    const immediate = !!(body.immediate || body.force || body.forceSync);
+    let affectedCharacters = [];
     const upserts = body.upserts || {};
     if (Object.keys(upserts).length) {
       try {
